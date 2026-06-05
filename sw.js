@@ -1,4 +1,4 @@
-const CACHE = 'calorieai-v7';
+const CACHE = 'calorieai-v8';
 const ASSETS = [
   '/',
   '/index.html',
@@ -23,9 +23,23 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Network-first for API calls, cache-first for assets
-  if (e.request.url.includes('anthropic.com')) return;
+  const req = e.request;
+
+  // Never touch the Anthropic API
+  if (req.url.includes('anthropic.com')) return;
+
+  // NETWORK-FIRST: always try to get the freshest version.
+  // Fall back to cache only when offline. This guarantees code
+  // updates are picked up immediately instead of being stuck
+  // behind a stale cached index.html / app.js.
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    fetch(req)
+      .then(res => {
+        // Update the cache with the fresh copy for offline use
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(req).then(cached => cached || caches.match('/index.html')))
   );
 });
