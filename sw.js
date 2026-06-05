@@ -1,4 +1,4 @@
-const CACHE = 'calorieai-v6';
+const CACHE = 'calorieai-v7';
 const ASSETS = [
   '/',
   '/index.html',

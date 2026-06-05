@@ -379,6 +379,7 @@ async function addFood() {
   const loadTxt = document.getElementById('loading-text');
   const errEl   = document.getElementById('add-error');
 
+  const wasPhoto = !!pendingPhoto;
   btn.disabled = true;
   errEl.classList.add('hidden');
 
@@ -401,7 +402,6 @@ async function addFood() {
       n = await lookupNutrition(desc, apiKey);
     }
 
-    const wasPhoto = !!pendingPhoto;
     const logs = getLogs();
     const d    = todayStr();
     if (!logs[d]) logs[d] = [];
