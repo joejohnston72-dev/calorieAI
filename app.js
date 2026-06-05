@@ -401,6 +401,7 @@ async function addFood() {
       n = await lookupNutrition(desc, apiKey);
     }
 
+    const wasPhoto = !!pendingPhoto;
     const logs = getLogs();
     const d    = todayStr();
     if (!logs[d]) logs[d] = [];
