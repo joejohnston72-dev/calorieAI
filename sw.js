@@ -1,10 +1,12 @@
-const CACHE = 'calorieai-v8';
+const CACHE = 'calorieai-v9';
+// Relative paths so the app works whether it's served from the domain root
+// or from a project subpath (e.g. GitHub Pages at /calorieai/).
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/styles.css',
-  '/app.js',
-  '/manifest.json',
+  './',
+  './index.html',
+  './styles.css',
+  './app.js',
+  './manifest.json',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
 ];
 
@@ -40,6 +42,6 @@ self.addEventListener('fetch', e => {
         caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
         return res;
       })
-      .catch(() => caches.match(req).then(cached => cached || caches.match('/index.html')))
+      .catch(() => caches.match(req).then(cached => cached || caches.match('./index.html')))
   );
 });
