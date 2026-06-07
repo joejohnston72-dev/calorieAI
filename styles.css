@@ -612,6 +612,30 @@ select.input {
 }
 .entry-action-btn:active { opacity: 1; }
 
+/* ── CLOUD BACKUP ────────────────────────────────────── */
+.sync-status {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 2px 0;
+  min-height: 18px;
+}
+.restore-link-wrap {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 4px;
+}
+
 /* ── MACRO PREVIEW ──────────────────────────────────── */
 .macro-cal-val {
   font-size: 20px;

@@ -12,16 +12,164 @@ const K = {
   WEIGHTS: 'cai_weights', // [{date:"YYYY-MM-DD", kg:number}]
 };
 
+// touchMeta + scheduleBackup are defined later (function declarations, hoisted).
+// Each save bumps a lastModified timestamp and queues a cloud backup.
+function afterSave() { touchMeta(); scheduleBackup(); }
+
 const getLogs    = ()    => DB.get(K.LOGS)    || {};
-const saveLogs   = v     => DB.set(K.LOGS, v);
+const saveLogs   = v     => { DB.set(K.LOGS, v);     afterSave(); };
 const getWeights = ()    => DB.get(K.WEIGHTS) || [];
-const saveWeights= v     => DB.set(K.WEIGHTS, v);
+const saveWeights= v     => { DB.set(K.WEIGHTS, v);  afterSave(); };
 const getProfile = ()    => DB.get(K.PROFILE);
-const saveProfile= v     => DB.set(K.PROFILE, v);
+const saveProfile= v     => { DB.set(K.PROFILE, v);  afterSave(); };
 const getApiKey  = ()    => DB.get(K.API) || '';
-const saveApiKey = v     => DB.set(K.API, v);
+const saveApiKey = v     => DB.set(K.API, v); // API key is device-local, not backed up
 const getFavs    = ()    => DB.get('cai_favs') || [];
-const saveFavs   = v     => DB.set('cai_favs', v);
+const saveFavs   = v     => { DB.set('cai_favs', v); afterSave(); };
+
+// ── CLOUD BACKUP (GitHub Gist) ─────────────────────────────────
+const GIST_FILENAME = 'calorieai-backup.json';
+const GIST_DESC     = 'CalorieAI Backup — do not delete';
+
+const getGistToken = () => localStorage.getItem('cai_gist_token') || '';
+const setGistToken = t  => localStorage.setItem('cai_gist_token', t);
+const getGistId    = () => localStorage.getItem('cai_gist_id') || '';
+const setGistId    = id => localStorage.setItem('cai_gist_id', id);
+const getMeta      = () => DB.get('cai_meta') || { lastModified: 0 };
+
+function touchMeta() { DB.set('cai_meta', { lastModified: Date.now() }); }
+
+function cloudEnabled() { return !!getGistToken(); }
+
+function buildBackupPayload() {
+  return {
+    app: 'calorieai',
+    version: 1,
+    lastModified: getMeta().lastModified || Date.now(),
+    profile: getProfile(),
+    logs:    getLogs(),
+    weights: getWeights(),
+    favs:    getFavs()
+  };
+}
+
+// Write a backup payload into localStorage WITHOUT re-triggering a backup
+function applyBackupPayload(data) {
+  if (!data) return;
+  if (data.profile) DB.set(K.PROFILE, data.profile);
+  if (data.logs)    DB.set(K.LOGS, data.logs);
+  if (data.weights) DB.set(K.WEIGHTS, data.weights);
+  if (data.favs)    DB.set('cai_favs', data.favs);
+  DB.set('cai_meta', { lastModified: data.lastModified || Date.now() });
+}
+
+async function ghFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: {
+      'Authorization': `Bearer ${getGistToken()}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      ...(opts.headers || {})
+    }
+  });
+  if (!res.ok) {
+    let msg = `GitHub error ${res.status}`;
+    if (res.status === 401) msg = 'Invalid token (needs "gist" scope)';
+    throw new Error(msg);
+  }
+  return res;
+}
+
+// Find an existing backup gist by filename — lets us restore with only the token
+async function findBackupGist() {
+  const res   = await ghFetch('https://api.github.com/gists?per_page=100');
+  const gists = await res.json();
+  const match = gists.find(g => g.files && g.files[GIST_FILENAME]);
+  return match ? match.id : null;
+}
+
+async function cloudPush() {
+  if (!cloudEnabled()) return;
+  const content = JSON.stringify(buildBackupPayload(), null, 2);
+  const body    = JSON.stringify({
+    description: GIST_DESC,
+    public: false,
+    files: { [GIST_FILENAME]: { content } }
+  });
+
+  let id = getGistId();
+  if (!id) {
+    id = await findBackupGist();         // reuse if one already exists
+    if (id) setGistId(id);
+  }
+
+  if (id) {
+    await ghFetch(`https://api.github.com/gists/${id}`, { method: 'PATCH', body });
+  } else {
+    const res  = await ghFetch('https://api.github.com/gists', { method: 'POST', body });
+    const gist = await res.json();
+    setGistId(gist.id);
+  }
+  setSyncStatus(`Last synced: ${new Date().toLocaleString('en-GB')}`);
+}
+
+async function cloudPull() {
+  if (!cloudEnabled()) return null;
+  let id = getGistId();
+  if (!id) { id = await findBackupGist(); if (id) setGistId(id); }
+  if (!id) return null;
+  const res  = await ghFetch(`https://api.github.com/gists/${id}`);
+  const gist = await res.json();
+  const file = gist.files[GIST_FILENAME];
+  if (!file) return null;
+  // Large gists are truncated — fetch raw_url if so
+  const raw = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+  return JSON.parse(raw);
+}
+
+// Debounced auto-backup
+let backupTimer = null;
+let backupPending = false;
+function scheduleBackup() {
+  if (!cloudEnabled()) return;
+  backupPending = true;
+  setSyncStatus('Backing up…');
+  clearTimeout(backupTimer);
+  backupTimer = setTimeout(async () => {
+    try { await cloudPush(); backupPending = false; }
+    catch (e) { setSyncStatus(`Backup failed: ${e.message}`); }
+  }, 2500);
+}
+
+function setSyncStatus(text) {
+  const el = document.getElementById('sync-status');
+  if (el) el.textContent = text;
+}
+
+// On startup: pull cloud and restore if it's newer (or local is empty)
+async function syncOnLaunch() {
+  if (!cloudEnabled()) return;
+  try {
+    setSyncStatus('Checking cloud…');
+    const cloud = await cloudPull();
+    if (!cloud) { setSyncStatus('No cloud backup yet'); return; }
+
+    const localMod = getMeta().lastModified || 0;
+    const localHasProfile = !!getProfile();
+
+    if (!localHasProfile || cloud.lastModified > localMod) {
+      applyBackupPayload(cloud);
+      setSyncStatus(`Restored from cloud: ${new Date(cloud.lastModified).toLocaleString('en-GB')}`);
+      return true; // signal that data changed
+    }
+    // local is newer → push it up
+    await cloudPush();
+  } catch (e) {
+    setSyncStatus(`Sync error: ${e.message}`);
+  }
+  return false;
+}
 
 // confidence → percentage
 function confPct(conf) {
@@ -780,6 +928,17 @@ function renderProfileView() {
   document.getElementById('p-macro-carbs').value   = mt.carbs   || Math.round(goal * 0.45 / 4);
   document.getElementById('p-macro-fat').value     = mt.fat     || Math.round(goal * 0.25 / 9);
   updateMacroCalPreview();
+
+  // Cloud backup state
+  document.getElementById('p-gist-token').value = getGistToken();
+  const connected = cloudEnabled();
+  document.getElementById('gist-disconnect-btn').classList.toggle('hidden', !connected);
+  document.getElementById('gist-connect-btn').textContent = connected ? 'Back Up Now' : 'Connect & Back Up Now';
+  if (connected && !document.getElementById('sync-status').textContent.trim()) {
+    setSyncStatus('Connected');
+  } else if (!connected) {
+    setSyncStatus('Not connected');
+  }
 }
 
 function updateMacroCalPreview() {
@@ -949,6 +1108,76 @@ function initEvents() {
     if (k) { saveApiKey(k); showToast('API key updated!'); }
   });
 
+  // ── Cloud backup handlers ──
+  document.getElementById('gist-connect-btn').addEventListener('click', async () => {
+    const token = document.getElementById('p-gist-token').value.trim();
+    if (!token) { setSyncStatus('Enter a token first'); return; }
+    setGistToken(token);
+    setSyncStatus('Connecting…');
+    try {
+      await cloudPush();
+      showToast('☁️ Backed up!');
+      document.getElementById('gist-disconnect-btn').classList.remove('hidden');
+      document.getElementById('gist-connect-btn').textContent = 'Back Up Now';
+    } catch (e) {
+      setSyncStatus(`Failed: ${e.message}`);
+    }
+  });
+
+  document.getElementById('gist-restore-btn').addEventListener('click', async () => {
+    const token = document.getElementById('p-gist-token').value.trim() || getGistToken();
+    if (!token) { setSyncStatus('Enter your token first'); return; }
+    setGistToken(token);
+    if (!confirm('Restore from cloud? This overwrites your current data on this device.')) return;
+    setSyncStatus('Restoring…');
+    try {
+      const cloud = await cloudPull();
+      if (!cloud) { setSyncStatus('No backup found for this token'); return; }
+      applyBackupPayload(cloud);
+      showToast('☁️ Restored!');
+      renderProfileView();
+      updateTodayView();
+      setSyncStatus(`Restored: ${new Date(cloud.lastModified).toLocaleString('en-GB')}`);
+    } catch (e) {
+      setSyncStatus(`Failed: ${e.message}`);
+    }
+  });
+
+  document.getElementById('gist-disconnect-btn').addEventListener('click', () => {
+    if (!confirm('Disconnect cloud backup? Your data stays on this device and in the gist, but auto-backup stops.')) return;
+    localStorage.removeItem('cai_gist_token');
+    localStorage.removeItem('cai_gist_id');
+    document.getElementById('p-gist-token').value = '';
+    document.getElementById('gist-disconnect-btn').classList.add('hidden');
+    document.getElementById('gist-connect-btn').textContent = 'Connect & Back Up Now';
+    setSyncStatus('Not connected');
+    showToast('Disconnected');
+  });
+
+  // ── Setup screen restore ──
+  document.getElementById('setup-restore-btn').addEventListener('click', () => {
+    document.getElementById('restore-panel').classList.toggle('hidden');
+  });
+
+  document.getElementById('restore-go-btn').addEventListener('click', async () => {
+    const token  = document.getElementById('restore-token').value.trim();
+    const status = document.getElementById('restore-status');
+    if (!token) { status.textContent = 'Enter your token'; return; }
+    setGistToken(token);
+    status.textContent = 'Searching for your backup…';
+    try {
+      const cloud = await cloudPull();
+      if (!cloud || !cloud.profile) { status.textContent = 'No backup found for this token'; return; }
+      applyBackupPayload(cloud);
+      status.textContent = 'Restored! Loading…';
+      launchApp();
+      updateTodayView();
+      showToast('☁️ Welcome back!');
+    } catch (e) {
+      status.textContent = `Failed: ${e.message}`;
+    }
+  });
+
   document.getElementById('export-btn').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify({
       profile: getProfile(), logs: getLogs(), weights: getWeights()
@@ -974,6 +1203,12 @@ function init() {
   initEvents();
   if (getProfile()) {
     launchApp();
+    // Background sync: pull newer data from other devices, then refresh
+    if (cloudEnabled()) {
+      syncOnLaunch().then(changed => {
+        if (changed) { updateTodayView(); renderProfileView(); }
+      });
+    }
   } else {
     document.getElementById('setup-screen').classList.remove('hidden');
     document.getElementById('main-app').classList.add('hidden');

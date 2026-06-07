@@ -84,6 +84,20 @@
 
       <button id="setup-btn" class="btn-primary full-width">Get Started →</button>
       <div id="setup-error" class="error-msg hidden" style="padding:8px 0"></div>
+
+      <div class="restore-link-wrap">
+        <span>Already have a cloud backup?</span>
+        <button id="setup-restore-btn" class="link-btn">Restore from cloud</button>
+      </div>
+
+      <!-- Restore panel (hidden until tapped) -->
+      <div id="restore-panel" class="card hidden" style="margin-top:14px">
+        <h2>Restore Backup</h2>
+        <p class="hint" style="margin-bottom:10px">Paste your GitHub token — we'll find your backup automatically.</p>
+        <input type="password" id="restore-token" class="input" placeholder="github_pat_... or ghp_...">
+        <button id="restore-go-btn" class="btn-primary full-width" style="margin-top:10px">Find &amp; Restore</button>
+        <div id="restore-status" class="sync-status" style="margin-top:8px"></div>
+      </div>
     </div>
   </div>
 
@@ -375,6 +389,19 @@
           <h3>API Key</h3>
           <input type="password" id="p-api-key" class="input" placeholder="sk-ant-...">
           <button id="save-api-btn" class="btn-primary full-width" style="margin-top:10px">Update API Key</button>
+        </div>
+
+        <div class="card">
+          <h3>☁️ Cloud Backup</h3>
+          <p class="hint" style="margin-bottom:10px">Auto-saves your data to a private GitHub Gist so it survives reinstalls &amp; device changes.</p>
+          <div class="field">
+            <label>GitHub Token (gist scope)</label>
+            <input type="password" id="p-gist-token" class="input" placeholder="github_pat_... or ghp_...">
+          </div>
+          <div id="sync-status" class="sync-status">Not connected</div>
+          <button id="gist-connect-btn" class="btn-primary full-width" style="margin-top:10px">Connect &amp; Back Up Now</button>
+          <button id="gist-restore-btn" class="btn-secondary full-width" style="margin-top:8px">Restore from Cloud</button>
+          <button id="gist-disconnect-btn" class="btn-danger full-width hidden" style="margin-top:8px">Disconnect</button>
         </div>
 
         <div class="card">
