@@ -1,0 +1,61 @@
+# CalorieAI — Project Context
+
+## Overview
+**CalorieAI** is an AI-powered daily calorie and macro tracker, built as an installable Progressive Web App (PWA) for use on the owner's (Joe) iPhone via "Add to Home Screen". Users log food in natural language (or by photo) and Claude returns calories + macros. Built for someone doing a **body recomposition** (high-protein focus).
+
+- **Live URL:** https://joejohnston72-dev.github.io/calorieAI/
+- **Repo:** https://github.com/joejohnston72-dev/calorieAI
+- **Local path:** `/Users/joejohnston/calorieai/`
+
+## Tech Stack
+- Vanilla **HTML / CSS / JS** — no framework. **Chart.js** (CDN) for charts.
+- **Anthropic API called directly from the browser** (model: Claude Haiku) using header `anthropic-dangerous-direct-browser-access: true`. User's API key stored in `localStorage` (device-local, never backed up).
+- All data persisted in **localStorage**.
+- **Dark theme**, mobile-first, single-column layout with bottom nav.
+
+## Files
+- `index.html` — markup (setup screen + 4 main views)
+- `styles.css` — dark theme styling
+- `app.js` — all logic (~1000 lines)
+- `sw.js` — service worker (**network-first**, so updates load on reopen)
+- `manifest.json` — PWA manifest (relative paths for `/calorieAI/` subpath)
+- `icon.svg` — app icon
+- `.nojekyll` — tells GitHub Pages to serve files as-is
+- `.github/workflows/pages.yml` — GitHub Actions deploy workflow
+
+## Features
+- **Food logging:** natural-language text → Claude returns calories + protein/carbs/fat. Also **photo logging** (Claude vision), and **photo + text combined** for best accuracy.
+- **4 progress rings:** Calories + Protein (large, the priorities), Carbs + Fat (small).
+- **Editable macro targets** (Profile) — user sets custom protein/carbs/fat grams for recomp.
+- **Accuracy %** per entry (high=95 / med=80 / low=60) + daily weighted-average badge.
+- **Over/under projection** — biases low-confidence entries upward (portions get underestimated).
+- **Favourites / Quick Add** chips; **edit-entry modal** (refreshes totals on save); meals **auto-grouped by time of day**.
+- **Stats:** BMI, TDEE, 7-day avg, streak, calorie history + macro split + weight charts.
+- **Weight tracking**, **Profile**, **Export Data (JSON)**.
+- **Cloud Backup (GitHub Gist):** auto-syncs all data to a private gist after every change; restore on any device with just the token (fixed filename `calorieai-backup.json` means no gist ID to remember). Restore available both on setup screen and in Profile.
+
+## Data Model (localStorage keys)
+- `cai_api` — Anthropic API key (device-local, NOT backed up)
+- `cai_profile` — `{name, age, sex, height, weight, activity, goalType, customGoal, macroTargets}`
+- `cai_logs` — `{ "YYYY-MM-DD": [{id, ts, name, serving, cal, p, c, f, conf, fromPhoto}] }`
+- `cai_weights` — `[{date:"YYYY-MM-DD", kg}]`
+- `cai_favs` — favourite food entries
+- `cai_meta` — `{lastModified}` (drives backup sync / last-write-wins)
+- `cai_gist_token`, `cai_gist_id` — cloud backup credentials
+
+## Deployment
+- **GitHub Pages via GitHub Actions** (`build_type: workflow`). Pushes to `main` auto-deploy.
+- Deploy command: `cd ~/calorieai && git add -A && git commit -m "..." && git push` (git creds cached in macOS Keychain — push works directly).
+- Bump `CACHE` const in `sw.js` + `?v=N` query on css/js links in `index.html` when shipping (cache-busting).
+- GitHub API token retrievable via: `printf "protocol=https\nhost=github.com\n\n" | git credential fill` (user's own token, gist+repo scope) — used to manage Pages via API.
+
+## Critical Gotchas / Lessons Learned
+1. **iOS home-screen PWAs have their OWN localStorage**, separate from Safari. **Deleting/reinstalling the app WIPES all data.** This already cost Joe his food logs once. **Never suggest deleting the app.** (This is what motivated Cloud Backup.)
+2. **Service worker must be network-first** — the original cache-first SW served stale HTML/JS and blocked all updates. Now network-first: updates load on a normal close-and-reopen.
+3. **`let`-scoped module vars** (e.g. `pendingPhoto`) are NOT on `window`; inline `onclick` handlers rely on `function` declarations being global. Matters for testing/debugging.
+4. **GitHub Pages now builds via Actions infra.** Joe's account was brand new (created Jun 1 2026) → GitHub auto-disabled Actions ("Actions has been disabled for this user") → Pages silently stopped building and the site 404'd for days. **Resolved Jun 8** when GitHub reinstated Actions; deploy was then triggered via workflow_dispatch. If the site ever mysteriously 404s, check account-level Actions status first.
+
+## Current Status (as of Jun 8 2026)
+- **Live and fully working** with all features deployed, including Cloud Backup.
+- Joe was given instructions to set up Cloud Backup (create a `gist`-scope token at github.com/settings/tokens → Profile → Cloud Backup → Connect).
+- No outstanding bugs.
