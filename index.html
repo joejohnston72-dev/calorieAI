@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="CalorieAI">
   <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
 <div id="app">
@@ -203,6 +203,25 @@
           </div>
         </div>
 
+        <!-- METABOLIC: Glycemic Load + GKI -->
+        <div id="metabolic-card" class="card metabolic-card">
+          <div class="metab-row">
+            <div class="metab-item">
+              <div class="metab-label">Glycemic Load</div>
+              <div id="metab-gl-val" class="metab-value">--</div>
+              <div id="metab-gl-zone" class="metab-zone">today</div>
+            </div>
+            <div class="metab-divider"></div>
+            <div class="metab-item">
+              <div class="metab-label">GKI <span id="metab-gki-src" class="metab-src"></span></div>
+              <div id="metab-gki-val" class="metab-value">--</div>
+              <div id="metab-gki-zone" class="metab-zone"></div>
+            </div>
+          </div>
+          <button id="log-gki-btn" class="btn-secondary full-width" style="margin-top:12px">🩸 Log blood reading (glucose + ketones)</button>
+          <div id="metab-hint" class="hint" style="margin-top:8px"></div>
+        </div>
+
         <div class="add-section">
           <div class="add-row">
             <input type="text" id="food-input" class="input food-input"
@@ -283,6 +302,16 @@
         <div class="chart-card card">
           <h3>Avg Macro Split — Last 7 Days</h3>
           <div class="chart-wrap chart-sm"><canvas id="chart-macros"></canvas></div>
+        </div>
+
+        <div class="chart-card card">
+          <h3>GKI — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">glucose ÷ ketones · lower = deeper ketosis</span></h3>
+          <div class="chart-wrap"><canvas id="chart-gki"></canvas></div>
+        </div>
+
+        <div class="chart-card card">
+          <h3>Daily Glycemic Load — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">green ≤100 · amber ≤150 · red &gt;150</span></h3>
+          <div class="chart-wrap"><canvas id="chart-gl"></canvas></div>
         </div>
 
         <div class="chart-card card">
@@ -472,9 +501,34 @@
       <button id="edit-save-btn" class="btn-primary full-width">Save Changes</button>
     </div>
   </div>
+
+  <!-- LOG BLOOD READING (GKI) MODAL -->
+  <div id="gki-modal" class="modal-overlay hidden">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3>Log Blood Reading</h3>
+        <button id="gki-close" class="modal-close">×</button>
+      </div>
+      <p class="hint" style="margin-bottom:12px">From a blood meter (e.g. Keto-Mojo). Both values in mmol/L. GKI = glucose ÷ ketones.</p>
+      <div class="field-row">
+        <div class="field">
+          <label>Glucose (mmol/L)</label>
+          <input type="number" id="gki-glucose" class="input" step="0.1" placeholder="5.2">
+        </div>
+        <div class="field">
+          <label>Ketones (mmol/L)</label>
+          <input type="number" id="gki-ketones" class="input" step="0.1" placeholder="1.5">
+        </div>
+      </div>
+      <div id="gki-preview" class="metab-zone" style="margin:4px 0 12px;min-height:1em"></div>
+      <button id="gki-save-btn" class="btn-primary full-width">Save Reading</button>
+      <div id="gki-error" class="error-msg hidden" style="margin-top:8px"></div>
+    </div>
+  </div>
 </div><!-- /app -->
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="app.js?v=9"></script>
+<script src="metabolic.js?v=10"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

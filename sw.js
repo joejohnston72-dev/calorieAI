@@ -1,4 +1,4 @@
-const CACHE = 'calorieai-v9';
+const CACHE = 'calorieai-v10';
 // Relative paths so the app works whether it's served from the domain root
 // or from a project subpath (e.g. GitHub Pages at /calorieai/).
 const ASSETS = [
@@ -6,6 +6,7 @@ const ASSETS = [
   './index.html',
   './styles.css',
   './app.js',
+  './metabolic.js',
   './manifest.json',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
 ];

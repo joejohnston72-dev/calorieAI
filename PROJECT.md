@@ -17,6 +17,7 @@
 - `index.html` — markup (setup screen + 4 main views)
 - `styles.css` — dark theme styling
 - `app.js` — all logic (~1000 lines)
+- `metabolic.js` — Glycemic Load + GKI logic (loaded BEFORE app.js; shares app.js's globals since both are classic scripts). See "Metabolic tracking" below.
 - `sw.js` — service worker (**network-first**, so updates load on reopen)
 - `manifest.json` — PWA manifest (relative paths for `/calorieAI/` subpath)
 - `icon.svg` — app icon
@@ -32,21 +33,32 @@
 - **Favourites / Quick Add** chips; **edit-entry modal** (refreshes totals on save); meals **auto-grouped by time of day**.
 - **Stats:** BMI, TDEE, 7-day avg, streak, calorie history + macro split + weight charts.
 - **Weight tracking**, **Profile**, **Export Data (JSON)**.
+- **Metabolic tracking (Glycemic Load + GKI)** — see dedicated section below.
 - **Cloud Backup (GitHub Gist):** auto-syncs all data to a private gist after every change; restore on any device with just the token (fixed filename `calorieai-backup.json` means no gist ID to remember). Restore available both on setup screen and in Profile.
 
 ## Data Model (localStorage keys)
 - `cai_api` — Anthropic API key (device-local, NOT backed up)
 - `cai_profile` — `{name, age, sex, height, weight, activity, goalType, customGoal, macroTargets}`
-- `cai_logs` — `{ "YYYY-MM-DD": [{id, ts, name, serving, cal, p, c, f, conf, fromPhoto}] }`
+- `cai_logs` — `{ "YYYY-MM-DD": [{id, ts, name, serving, cal, p, c, f, gi, gl, conf, fromPhoto}] }` — `gi` = estimated glycemic index (from the nutrition AI), `gl` = glycemic load = round(gi × carbs ÷ 100)
 - `cai_weights` — `[{date:"YYYY-MM-DD", kg}]`
-- `cai_favs` — favourite food entries
+- `cai_favs` — favourite food entries (now also carry `gi`/`gl`)
+- `cai_gki` — `[{id, date:"YYYY-MM-DD", ts, glucose, ketones}]` — real blood readings in mmol/L; true GKI = glucose ÷ ketones
 - `cai_meta` — `{lastModified}` (drives backup sync / last-write-wins)
 - `cai_gist_token`, `cai_gist_id` — cloud backup credentials
+- **Cloud backup** (`buildBackupPayload`/`applyBackupPayload`) now includes `gki`; export JSON includes it too.
+
+## Metabolic tracking (Glycemic Load + GKI) — `metabolic.js`
+- **Glycemic Load (GL):** the nutrition AI prompt (text + photo) now also returns `glycemic_index` (0–110; 0 for carb-free foods). At log time we store `gi` and compute `gl = round(gi × carbs ÷ 100)` per entry. Shown as a per-food pill in the food log (`glBadgeHTML`), a daily total + zone on the Today "Metabolic" card, and a 14-day daily-GL bar chart in Stats. Zones: per-food low ≤10 / med 11–19 / high ≥20; daily low ≤100 / moderate ≤150 / high >150.
+- **GKI (Glucose Ketone Index = glucose ÷ ketones, mmol/L):** supports BOTH real readings and an estimate.
+  - *Measured:* "🩸 Log blood reading" modal on the Today card → stored in `cai_gki`; the card shows the latest measured GKI for today when present (badge "measured").
+  - *Estimated:* when there's no reading, `estimateGKIForDay(entries, refTs)` derives a rough GKI from the day's carbs + time since the last meal (`estimateGKIRaw`), clearly labelled "estimated". **This is a heuristic, not a clinical value** — deliberately transparent/documented in the file; a real reading always overrides it.
+  - Stats has a 14-day GKI chart: solid purple line = measured points, dashed grey = estimated for days with food but no reading. Zones (Seyfried): ≤1 deep / ≤3 high / ≤6 moderate / ≤9 light / >9 not in ketosis.
+- **Load order matters:** `metabolic.js` is included before `app.js` in `index.html` so its function declarations exist when app.js's render calls them; it reads app.js's globals (`DB`, `getLogs`, `todayStr`, `afterSave`, `charts`, `last14`, `showToast`, `updateTodayView`) at call time.
 
 ## Deployment
 - **GitHub Pages via GitHub Actions** (`build_type: workflow`). Pushes to `main` auto-deploy.
 - Deploy command: `cd ~/calorieai && git add -A && git commit -m "..." && git push` (git creds cached in macOS Keychain — push works directly).
-- Bump `CACHE` const in `sw.js` + `?v=N` query on css/js links in `index.html` when shipping (cache-busting).
+- Bump `CACHE` const in `sw.js` + `?v=N` query on css/js links in `index.html` when shipping (cache-busting). **Currently v10** (added `metabolic.js` to the SW precache list + the `?v=10` query on css/js).
 - GitHub API token retrievable via: `printf "protocol=https\nhost=github.com\n\n" | git credential fill` (user's own token, gist+repo scope) — used to manage Pages via API.
 
 ## Critical Gotchas / Lessons Learned

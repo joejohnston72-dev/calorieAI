@@ -49,7 +49,8 @@ function buildBackupPayload() {
     profile: getProfile(),
     logs:    getLogs(),
     weights: getWeights(),
-    favs:    getFavs()
+    favs:    getFavs(),
+    gki:     getGki()
   };
 }
 
@@ -60,6 +61,7 @@ function applyBackupPayload(data) {
   if (data.logs)    DB.set(K.LOGS, data.logs);
   if (data.weights) DB.set(K.WEIGHTS, data.weights);
   if (data.favs)    DB.set('cai_favs', data.favs);
+  if (data.gki)     DB.set('cai_gki', data.gki);
   DB.set('cai_meta', { lastModified: data.lastModified || Date.now() });
 }
 
@@ -267,6 +269,7 @@ Respond with ONLY valid JSON, no other text:
   "protein_g": <number to 1dp>,
   "carbs_g": <number to 1dp>,
   "fat_g": <number to 1dp>,
+  "glycemic_index": <integer 0-110 — estimated glycemic index of this food; use 0 if it has no meaningful carbs (e.g. meat, eggs, oils)>,
   "confidence": "high|medium|low"
 }`;
 
@@ -291,6 +294,7 @@ Respond with ONLY this JSON (no other text):
   "protein_g": <number to 1dp>,
   "carbs_g": <number to 1dp>,
   "fat_g": <number to 1dp>,
+  "glycemic_index": <integer 0-110 — estimated overall glycemic index of the carb sources in this meal; use 0 if it has no meaningful carbs>,
   "confidence": "high|medium|low"
 }`;
 
@@ -440,6 +444,7 @@ function updateTodayView() {
 
   renderFoodLog(entries);
   renderFavourites();
+  renderMetabolicToday(entries);
 }
 
 function renderFoodLog(entries) {
@@ -474,6 +479,7 @@ function renderFoodLog(entries) {
               <span class="mp">P ${Math.round(e.p)}g</span>
               <span class="mc">C ${Math.round(e.c)}g</span>
               <span class="mf">F ${Math.round(e.f)}g</span>
+              ${glBadgeHTML(e)}
               ${accPct ? `<span class="entry-accuracy entry-acc-${accCls}">~${accPct}%</span>` : ''}
             </div>
           </div>
@@ -553,6 +559,7 @@ async function addFood() {
     const logs = getLogs();
     const d    = todayStr();
     if (!logs[d]) logs[d] = [];
+    const gi = clampGI(n.glycemic_index);
     logs[d].push({
       id:        Date.now().toString(),
       ts:        Date.now(),
@@ -562,6 +569,8 @@ async function addFood() {
       p:         n.protein_g,
       c:         n.carbs_g,
       f:         n.fat_g,
+      gi,
+      gl:        computeGL(gi, n.carbs_g),
       conf:      confPct(n.confidence),
       fromPhoto: wasPhoto
     });
@@ -630,11 +639,14 @@ function saveEdit() {
   const c   = parseFloat(document.getElementById('edit-carbs').value)   || 0;
   const f   = parseFloat(document.getElementById('edit-fat').value)     || 0;
 
+  const gi = logs[d][idx].gi || 0;   // keep the food's GI; recompute load from edited carbs
   logs[d][idx] = {
     ...logs[d][idx],
     name:    document.getElementById('edit-name').value.trim(),
     serving: document.getElementById('edit-serving').value.trim(),
     cal, p, c, f,
+    gi,
+    gl:   computeGL(gi, c),
     conf: null // manually edited — no confidence score
   };
   saveLogs(logs);
@@ -656,7 +668,7 @@ function toggleFavourite(entryId) {
     favs.splice(existing, 1);
     showToast('Removed from favourites');
   } else {
-    favs.push({ favId: entry.id, name: entry.name, serving: entry.serving, cal: entry.cal, p: entry.p, c: entry.c, f: entry.f });
+    favs.push({ favId: entry.id, name: entry.name, serving: entry.serving, cal: entry.cal, p: entry.p, c: entry.c, f: entry.f, gi: entry.gi || 0, gl: entryGL(entry) });
     showToast('⭐ Saved to favourites!');
   }
   saveFavs(favs);
@@ -676,6 +688,8 @@ function quickAddFavourite(fav) {
     p:       fav.p,
     c:       fav.c,
     f:       fav.f,
+    gi:      fav.gi || 0,
+    gl:      typeof fav.gl === 'number' ? fav.gl : computeGL(fav.gi || 0, fav.c),
     conf:    null
   });
   saveLogs(logs);
@@ -742,6 +756,7 @@ function renderStats() {
 
   renderCalChart(logs, profile);
   renderMacroChart(logs);
+  renderMetabolicStats();
   renderWeightChartIn('chart-weight-stats', 'weightStats');
 }
 
@@ -1077,6 +1092,16 @@ function initEvents() {
     if (confirm('Clear all favourites?')) { saveFavs([]); renderFavourites(); }
   });
 
+  // Metabolic — GKI blood-reading modal
+  document.getElementById('log-gki-btn').addEventListener('click', openGkiModal);
+  document.getElementById('gki-close').addEventListener('click', closeGkiModal);
+  document.getElementById('gki-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('gki-modal')) closeGkiModal();
+  });
+  document.getElementById('gki-save-btn').addEventListener('click', saveGkiReading);
+  ['gki-glucose', 'gki-ketones'].forEach(id =>
+    document.getElementById(id).addEventListener('input', updateGkiPreview));
+
   document.getElementById('log-weight-btn').addEventListener('click', logWeight);
   document.getElementById('weight-input').addEventListener('keypress', e => {
     if (e.key === 'Enter') logWeight();
@@ -1180,7 +1205,7 @@ function initEvents() {
 
   document.getElementById('export-btn').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify({
-      profile: getProfile(), logs: getLogs(), weights: getWeights()
+      profile: getProfile(), logs: getLogs(), weights: getWeights(), gki: getGki()
     }, null, 2)], { type: 'application/json' });
     const a = Object.assign(document.createElement('a'), {
       href: URL.createObjectURL(blob),
