@@ -161,7 +161,7 @@ function saveGkiReading() {
   list.push({ id: Date.now().toString(), date: todayStr(), ts: Date.now(), glucose: g, ketones: k });
   saveGki(list);
   closeGkiModal();
-  showToast('🩸 Blood reading logged');
+  showToast('Blood reading logged');
   updateTodayView();
 }
 
@@ -193,21 +193,21 @@ function renderMetabolicStats() {
       data: {
         labels,
         datasets: [
-          { type: 'line', label: 'Measured', data: measured, borderColor: '#a78bfa',
-            backgroundColor: '#a78bfa', borderWidth: 2, pointRadius: 4, pointStyle: 'circle',
+          { type: 'line', label: 'Measured', data: measured, borderColor: '#8fc2bb',
+            backgroundColor: '#8fc2bb', borderWidth: 2, pointRadius: 4, pointStyle: 'circle',
             spanGaps: true, tension: 0.3 },
-          { type: 'line', label: 'Estimated', data: estimated, borderColor: '#64748b',
+          { type: 'line', label: 'Estimated', data: estimated, borderColor: '#979ca4',
             backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [4, 3],
             pointRadius: 3, pointStyle: 'circle', spanGaps: true, tension: 0.3 },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: true, labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12 } },
+        plugins: { legend: { display: true, labels: { font: { size: 10 }, color: '#979ca4', boxWidth: 12 } },
           tooltip: { callbacks: { label: c => c.raw == null ? '' : `GKI ${c.raw} — ${gkiZone(c.raw).label}` } } },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-          y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' }, beginAtZero: true },
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+          y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' }, beginAtZero: true },
         },
       },
     });
@@ -224,7 +224,7 @@ function renderMetabolicStats() {
         labels,
         datasets: [{
           data: glData,
-          backgroundColor: glData.map(v => v === 0 ? '#334155' : v > 150 ? '#f87171' : v > 100 ? '#fbbf24' : '#4ade80'),
+          backgroundColor: glData.map(v => v === 0 ? '#262a2f' : v > 150 ? '#d88685' : v > 100 ? '#d8b774' : '#93c2a4'),
           borderRadius: 4,
         }],
       },
@@ -233,8 +233,8 @@ function renderMetabolicStats() {
         plugins: { legend: { display: false },
           tooltip: { callbacks: { label: c => `GL ${c.raw} — ${dailyGLZone(c.raw).label}` } } },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-          y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' }, beginAtZero: true },
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+          y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' }, beginAtZero: true },
         },
       },
     });

@@ -173,6 +173,17 @@ async function syncOnLaunch() {
   return false;
 }
 
+// ── Lucide icons (vendored subset, https://lucide.dev · ISC) — shared ARC style
+const ICONS = {
+  camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  star:   '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+  x:      '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+function icon(name, size = 18, filled = false) {
+  return `<svg class="lc" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
+
 // confidence → percentage
 function confPct(conf) {
   if (conf === 'high')   return 95;
@@ -371,7 +382,7 @@ function updateTodayView() {
   const calCirc = 351.86;
   setRing('ring-cal', tot.cal, goal, calCirc);
   document.getElementById('ring-cal').style.stroke =
-    tot.cal > goal * 1.05 ? '#ef4444' : '#22c55e';
+    tot.cal > goal * 1.05 ? '#d88685' : '#d6b48e';
   document.getElementById('ring-cal-val').textContent = Math.round(tot.cal);
   const calRem = goal - tot.cal;
   document.getElementById('ring-cal-sub').textContent =
@@ -416,13 +427,13 @@ function updateTodayView() {
     if (diff < 20) {
       // All high confidence — logged is accurate
       projEl.className = 'projection-display proj-on';
-      projEl.textContent = '✓ Estimates look accurate';
+      projEl.textContent = 'Estimates look accurate';
     } else {
       const sign  = vsGoal > 0 ? 'over' : 'under';
       const absDiff = Math.abs(vsGoal);
       const cls   = vsGoal > goal * 0.1 ? 'proj-exceed' : vsGoal > 0 ? 'proj-over' : 'proj-on';
       projEl.className = `projection-display ${cls}`;
-      projEl.innerHTML = `⚠ Likely actual: ~${projTotal.toLocaleString()} kcal<br><span style="font-weight:400">+${diff} from portion estimates · ${absDiff > 0 ? Math.abs(vsGoal).toLocaleString()+' kcal '+sign+' goal' : 'on target'}</span>`;
+      projEl.innerHTML = `Likely actual: ~${projTotal.toLocaleString()} kcal<br><span style="font-weight:400">+${diff} from portion estimates · ${absDiff > 0 ? Math.abs(vsGoal).toLocaleString()+' kcal '+sign+' goal' : 'on target'}</span>`;
     }
     projEl.classList.remove('hidden');
   } else {
@@ -473,7 +484,7 @@ function renderFoodLog(entries) {
         return `
         <div class="food-entry">
           <div class="food-entry-info">
-            <div class="food-entry-name">${e.fromPhoto ? '📷 ' : ''}${esc(e.name)}</div>
+            <div class="food-entry-name">${e.fromPhoto ? icon('camera', 13) : ''}${esc(e.name)}</div>
             <div class="food-entry-serving">${esc(e.serving)}</div>
             <div class="food-entry-macros">
               <span class="mp">P ${Math.round(e.p)}g</span>
@@ -488,9 +499,9 @@ function renderFoodLog(entries) {
             <div class="food-entry-cal-sub">kcal</div>
           </div>
           <div class="entry-actions">
-            <button class="entry-action-btn" onclick="openEditModal('${e.id}')" title="Edit">✏️</button>
-            <button class="entry-action-btn" onclick="toggleFavourite('${e.id}')" title="${isFav ? 'Remove favourite' : 'Save as favourite'}">${isFav ? '⭐' : '☆'}</button>
-            <button class="entry-action-btn" onclick="deleteEntry('${e.id}')" title="Delete">×</button>
+            <button class="entry-action-btn" onclick="openEditModal('${e.id}')" title="Edit" aria-label="Edit ${esc(e.name)}">${icon('pencil', 16)}</button>
+            <button class="entry-action-btn${isFav ? ' is-fav' : ''}" onclick="toggleFavourite('${e.id}')" title="${isFav ? 'Remove favourite' : 'Save as favourite'}" aria-label="${isFav ? 'Remove favourite' : 'Save as favourite'}" aria-pressed="${isFav}">${icon('star', 16, isFav)}</button>
+            <button class="entry-action-btn" onclick="deleteEntry('${e.id}')" title="Delete" aria-label="Delete ${esc(e.name)}">${icon('x', 16)}</button>
           </div>
         </div>`;
       }).join('')}
@@ -541,12 +552,12 @@ async function addFood() {
     let n;
     if (pendingPhoto && desc) {
       // Combined: photo + text context
-      loadTxt.textContent = '📷 Analysing photo + context...';
+      loadTxt.textContent = 'Analysing photo and context…';
       loading.classList.remove('hidden');
       n = await lookupNutritionFromImage(pendingPhoto.base64, pendingPhoto.mediaType, apiKey, desc);
     } else if (pendingPhoto) {
       // Photo only
-      loadTxt.textContent = '📷 Analysing photo...';
+      loadTxt.textContent = 'Analysing photo…';
       loading.classList.remove('hidden');
       n = await lookupNutritionFromImage(pendingPhoto.base64, pendingPhoto.mediaType, apiKey);
     } else {
@@ -576,7 +587,7 @@ async function addFood() {
     });
     saveLogs(logs);
     input.value = '';
-    if (wasPhoto) { clearPendingPhoto(); showToast('📷 Photo analysed!'); }
+    if (wasPhoto) { clearPendingPhoto(); showToast('Photo logged'); }
     updateTodayView();
   } catch (err) {
     errEl.textContent = `Error: ${err.message}`;
@@ -669,7 +680,7 @@ function toggleFavourite(entryId) {
     showToast('Removed from favourites');
   } else {
     favs.push({ favId: entry.id, name: entry.name, serving: entry.serving, cal: entry.cal, p: entry.p, c: entry.c, f: entry.f, gi: entry.gi || 0, gl: entryGL(entry) });
-    showToast('⭐ Saved to favourites!');
+    showToast('Saved to quick add');
   }
   saveFavs(favs);
   updateTodayView();
@@ -778,14 +789,14 @@ function renderCalChart(logs, profile) {
       datasets: [
         {
           data,
-          backgroundColor: data.map(v => v === 0 ? '#334155' : v > goal * 1.05 ? '#f87171' : '#4ade80'),
+          backgroundColor: data.map(v => v === 0 ? '#262a2f' : v > goal * 1.05 ? '#d88685' : '#d6b48e'),
           borderRadius: 4,
           order: 2
         },
         {
           type: 'line',
           data: new Array(14).fill(goal),
-          borderColor: '#22c55e',
+          borderColor: '#979ca4',
           borderWidth: 1.5,
           borderDash: [4, 4],
           pointRadius: 0,
@@ -798,8 +809,8 @@ function renderCalChart(logs, profile) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw} kcal` } } },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-        y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' } }
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' } }
       }
     }
   });
@@ -824,7 +835,7 @@ function renderMacroChart(logs) {
       labels: ['Protein', 'Carbs', 'Fat'],
       datasets: [{
         data: [+(p/n).toFixed(1), +(c/n).toFixed(1), +(f/n).toFixed(1)],
-        backgroundColor: ['#60a5fa', '#fbbf24', '#fb923c'],
+        backgroundColor: ['#9fb8cc', '#cfc07e', '#d49ab8'],
         borderWidth: 0
       }]
     },
@@ -832,7 +843,7 @@ function renderMacroChart(logs) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'right', labels: { font: { size: 11 }, padding: 10, color: '#94a3b8' } },
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 10, color: '#979ca4' } },
         tooltip: { callbacks: { label: c => `${c.label}: ${c.raw}g avg` } }
       }
     }
@@ -854,8 +865,8 @@ function renderWeightChartIn(canvasId, chartKey) {
       }),
       datasets: [{
         data: weights.map(w => w.kg),
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34,197,94,0.08)',
+        borderColor: '#d6b48e',
+        backgroundColor: 'rgba(214,180,142,0.08)',
         borderWidth: 2,
         pointRadius: 3,
         fill: true,
@@ -867,8 +878,8 @@ function renderWeightChartIn(canvasId, chartKey) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-        y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' } }
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' } }
       }
     }
   });
@@ -1141,7 +1152,7 @@ function initEvents() {
     setSyncStatus('Connecting…');
     try {
       await cloudPush();
-      showToast('☁️ Backed up!');
+      showToast('Backed up to cloud');
       document.getElementById('gist-disconnect-btn').classList.remove('hidden');
       document.getElementById('gist-connect-btn').textContent = 'Back Up Now';
     } catch (e) {
@@ -1159,7 +1170,7 @@ function initEvents() {
       const cloud = await cloudPull();
       if (!cloud) { setSyncStatus('No backup found for this token'); return; }
       applyBackupPayload(cloud);
-      showToast('☁️ Restored!');
+      showToast('Restored from cloud');
       renderProfileView();
       updateTodayView();
       setSyncStatus(`Restored: ${new Date(cloud.lastModified).toLocaleString('en-GB')}`);
@@ -1197,7 +1208,7 @@ function initEvents() {
       status.textContent = 'Restored! Loading…';
       launchApp();
       updateTodayView();
-      showToast('☁️ Welcome back!');
+      showToast('Restored from cloud');
     } catch (e) {
       status.textContent = `Failed: ${e.message}`;
     }
