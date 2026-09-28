@@ -179,6 +179,7 @@ const ICONS = {
   pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
   star:   '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
   x:      '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  bot:    '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
 };
 function icon(name, size = 18, filled = false) {
   return `<svg class="lc" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -353,12 +354,13 @@ function navigate(view) {
   document.getElementById(`view-${view}`).classList.add('active');
   document.querySelector(`.nav-item[data-view="${view}"]`).classList.add('active');
 
-  const titles = { today: 'Today', stats: 'Stats', weight: 'Weight', profile: 'Profile' };
+  // Same header as ARC: the weekday as the title on Today, meta on the right.
+  const titles = { today: new Date().toLocaleDateString('en-GB', { weekday: 'long' }), stats: 'Progress', weight: 'Body', profile: 'Profile' };
   document.getElementById('header-title').textContent = titles[view];
 
   const profile = getProfile();
   if (view === 'today' && profile) {
-    document.getElementById('header-sub').textContent = `Goal: ${goalCals(profile).toLocaleString()} kcal`;
+    document.getElementById('header-sub').textContent = `Goal ${goalCals(profile).toLocaleString()} kcal`;
   } else {
     document.getElementById('header-sub').textContent = '';
   }
@@ -424,12 +426,23 @@ function updateTodayView() {
   document.getElementById('ring-fat-val').textContent = `${Math.round(tot.f)}g`;
 
   // Goal info text
+  // Goal kcal is in the header meta; the hero lists the macro targets only.
   document.getElementById('goal-display').innerHTML = profile ? `
-    Goal: <strong>${goal.toLocaleString()}</strong> kcal<br>
-    Protein: <strong>${pg}g</strong> · Carbs: <strong>${cg}g</strong> · Fat: <strong>${fg}g</strong>
+    <span class="gi-lbl">Targets</span>
+    <span><b class="ring-label-protein">${pg}g</b> protein</span>
+    <span><b class="ring-label-carbs">${cg}g</b> carbs</span>
+    <span><b class="ring-label-fat">${fg}g</b> fat</span>
   ` : '';
 
   document.getElementById('log-date-label').textContent = fmtDate(todayStr());
+
+  // Snapshot streak tile (Progress pillar: open, teal)
+  const streak = calcStreak();
+  document.getElementById('snap-streak').textContent = streak;
+  document.getElementById('snap-streak-sub').textContent = (logs => {
+    const n = last7().filter(d => (logs[d] || []).length).length;
+    return `${n}/7 this week`;
+  })(getLogs());
 
   // Over/under projection — apply bias per confidence level
   // Research: restaurant/visual estimates typically undercount by 10-20%
@@ -443,18 +456,15 @@ function updateTodayView() {
     const projTotal= Math.round(projectedCal);
     const vsGoal   = projTotal - goal;
 
+    // ARC's coach voice: only speak when there's something to say (no "all good" nag).
     if (diff < 20) {
-      // All high confidence — logged is accurate
-      projEl.className = 'projection-display proj-on';
-      projEl.textContent = 'Estimates look accurate';
+      projEl.classList.add('hidden');
     } else {
-      const sign  = vsGoal > 0 ? 'over' : 'under';
-      const absDiff = Math.abs(vsGoal);
-      const cls   = vsGoal > goal * 0.1 ? 'proj-exceed' : vsGoal > 0 ? 'proj-over' : 'proj-on';
-      projEl.className = `projection-display ${cls}`;
-      projEl.innerHTML = `Likely actual: ~${projTotal.toLocaleString()} kcal<br><span style="font-weight:400">+${diff} from portion estimates · ${absDiff > 0 ? Math.abs(vsGoal).toLocaleString()+' kcal '+sign+' goal' : 'on target'}</span>`;
+      const sign = vsGoal > 0 ? 'over' : 'under';
+      projEl.innerHTML = `<div class="eyebrow eyebrow-coach">${icon('bot', 14)}Estimate check</div>
+        <p>Portion estimates usually run low, so you're likely at <b>~${projTotal.toLocaleString()} kcal</b>, not ${Math.round(tot.cal).toLocaleString()}: +${diff} from ${entries.filter(e => e.conf != null && e.conf < 90).length} lower-confidence ${entries.filter(e => e.conf != null && e.conf < 90).length === 1 ? 'entry' : 'entries'}. That puts you ${vsGoal === 0 ? 'on target' : `${Math.abs(vsGoal).toLocaleString()} kcal ${sign} goal`}.</p>`;
+      projEl.classList.remove('hidden');
     }
-    projEl.classList.remove('hidden');
   } else {
     projEl.classList.add('hidden');
   }
@@ -1121,8 +1131,8 @@ function showToast(msg) {
 }
 
 function initEvents() {
-  document.querySelectorAll('.nav-item').forEach(btn =>
-    btn.addEventListener('click', () => navigate(btn.dataset.view)));
+  document.querySelectorAll('.nav-item, [data-view-link]').forEach(btn =>
+    btn.addEventListener('click', () => navigate(btn.dataset.view || btn.dataset.viewLink)));
 
   document.getElementById('add-btn').addEventListener('click', addFood);
   document.getElementById('fav-chips').addEventListener('click', e => {
@@ -1315,7 +1325,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !getProfile()) return;
   if (lastShownDay !== todayStr()) updateTodayView();
   if (cloudEnabled()) syncOnLaunch().then(changed => { if (changed) { updateTodayView(); renderProfileView(); } });
-  arcSync().then(changed => { if (changed) refreshAfterArcSync(); });
+  arcSync().then(changed => { if (changed) refreshAfterArcSync(); renderTrainTile(); });
 });
 
 function init() {

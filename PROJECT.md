@@ -84,3 +84,4 @@
 - Gist backup kept as "Legacy backup" for restoring old data.
 - **Known ARC-side issue:** arc `sw.js` activate deletes every cache that isn't its own (incl. `calorieai-*`) — needs a `startsWith('arc-')` filter. ARC's `getNutritionToday` uses the UTC date.
 - SW cache **v13**.
+- **ARC component parity (v14):** Today = ARC's layout — weekday title + right meta, Fuel hero (ARC `.next-card` shape in sand) holding the rings and the log input, lavender "Estimate check" coach bubble (only when portions likely under-count), ARC's 3-tile snapshot (streak open/teal · glycemic load + GKI zone, tap to log a reading · Train tile reading ARC's `workout` store for today's session/planned routine, links to ARC), open food-log list. Tabs: Today · Progress · Body · Profile with ARC's active pill + per-pillar colour. Progress = open stats with hairlines, teal headers. CSS block "ARC components" in styles.css mirrors arc/workout/index.html — keep in step.

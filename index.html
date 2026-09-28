@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 <div id="app">
@@ -115,7 +115,7 @@
 
     <header id="app-header">
       <h1 id="header-title">Today</h1>
-      <div id="header-sub"></div>
+      <div id="header-sub" class="header-meta"></div>
     </header>
 
     <div id="views">
@@ -124,7 +124,8 @@
       <div id="view-today" class="view active">
 
         <!-- Priority rings: Calories + Protein large, Carbs + Fat smaller -->
-        <div class="rings-card card">
+        <section class="rings-card fuel-hero" aria-label="Today's fuel">
+          <div class="eyebrow eyebrow-fuel"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>Fuel · today</div>
 
           <!-- Row 1: Key metrics -->
           <div class="rings-row rings-row-primary">
@@ -206,37 +207,15 @@
             <!-- GOAL INFO -->
             <div class="goal-info-cell">
               <div id="goal-display" class="goal-info-text"></div>
-              <div id="projection-display" class="projection-display hidden"></div>
             </div>
 
           </div>
-        </div>
-
-        <!-- METABOLIC: Glycemic Load + GKI -->
-        <div id="metabolic-card" class="card metabolic-card">
-          <div class="metab-row">
-            <div class="metab-item">
-              <div class="metab-label">Glycemic Load</div>
-              <div id="metab-gl-val" class="metab-value">--</div>
-              <div id="metab-gl-zone" class="metab-zone">today</div>
-            </div>
-            <div class="metab-divider"></div>
-            <div class="metab-item">
-              <div class="metab-label">GKI <span id="metab-gki-src" class="metab-src"></span></div>
-              <div id="metab-gki-val" class="metab-value">--</div>
-              <div id="metab-gki-zone" class="metab-zone"></div>
-            </div>
-          </div>
-          <button id="log-gki-btn" class="btn-secondary full-width" style="margin-top:12px"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>Log blood reading</button>
-          <div id="metab-hint" class="hint" style="margin-top:8px"></div>
-        </div>
-
-        <div class="add-section">
+          <div class="add-section">
           <div class="add-row">
             <input type="text" id="food-input" class="input food-input" aria-label="Describe what you ate" enterkeyhint="done"
               placeholder="e.g. Weetabix 2 biscuits, Big Mac, chicken breast 150g...">
             <label id="camera-btn" class="btn-camera" title="Take a photo" aria-label="Log food from a photo">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              <svg class="lc" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
               <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
             </label>
             <button id="add-btn" class="btn-add">Add</button>
@@ -257,6 +236,30 @@
           <div id="add-error" class="error-msg hidden"></div>
         </div>
 
+        </section>
+
+        <!-- Estimate check: the AI's portion-bias note, in ARC's coach voice -->
+        <div id="projection-display" class="coach-note hidden" role="status"></div>
+
+        <!-- Snapshot: ARC's three-tile row (Progress open · Fuel wash · Train link) -->
+        <div class="dash-snapshot">
+          <button type="button" class="snap-tile" id="tileStreak" data-view-link="stats">
+            <span class="snap-ico ico-prog"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"/></svg></span>
+            <div><div class="snap-val" id="snap-streak">0</div><div class="snap-lbl">Day streak</div></div>
+            <div class="snap-sub" id="snap-streak-sub">days logged</div>
+          </button>
+          <button type="button" class="snap-tile tile-wash" id="log-gki-btn" aria-label="Glycemic load and GKI. Tap to log a blood reading">
+            <span class="snap-ico ico-fuel"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg></span>
+            <div id="metabolic-card"><div class="snap-val" id="metab-gl-val">--</div><div class="snap-lbl">Glycemic load</div></div>
+            <div class="snap-sub" id="metab-gki-val">GKI --</div>
+          </button>
+          <a class="snap-tile tile-wash tile-train" id="tileTrain" href="https://joejohnston72-dev.github.io/arc/workout/" target="_blank" rel="noopener">
+            <span class="snap-ico ico-train"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z"/><path d="m2.5 21.5 1.4-1.4"/><path d="m20.1 3.9 1.4-1.4"/><path d="M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z"/><path d="m9.6 14.4 4.8-4.8"/></svg></span>
+            <div><div class="snap-val" id="train-val">ARC</div><div class="snap-lbl" id="train-lbl">Training</div></div>
+            <div class="snap-sub" id="train-sub">Open <svg class="lc" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+          </a>
+        </div>
+
         <!-- FAVOURITES -->
         <div id="fav-section" class="fav-section hidden">
           <div class="fav-header">
@@ -266,16 +269,16 @@
           <div id="fav-chips" class="fav-chips"></div>
         </div>
 
-        <div class="log-section card">
+        <section class="log-section">
           <div class="log-header-row">
-            <h3>Food Log</h3>
+            <h3 class="sec-title">Food log</h3>
             <div class="log-header-right">
               <span id="accuracy-badge" class="accuracy-badge hidden"></span>
               <span id="log-date-label" class="muted-text"></span>
             </div>
           </div>
           <div id="food-log"></div>
-        </div>
+        </section>
       </div>
 
       <!-- STATS -->
@@ -303,27 +306,27 @@
           </div>
         </div>
 
-        <div class="chart-card card">
+        <div class="chart-card">
           <h3>Calories — Last 14 Days</h3>
           <div class="chart-wrap"><canvas id="chart-calories"></canvas></div>
         </div>
 
-        <div class="chart-card card">
+        <div class="chart-card">
           <h3>Avg Macro Split — Last 7 Days</h3>
           <div class="chart-wrap chart-sm"><canvas id="chart-macros"></canvas></div>
         </div>
 
-        <div class="chart-card card">
+        <div class="chart-card">
           <h3>GKI — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">blood readings · lower = deeper ketosis</span></h3>
           <div class="chart-wrap"><canvas id="chart-gki"></canvas></div>
         </div>
 
-        <div class="chart-card card">
+        <div class="chart-card">
           <h3>Daily Glycemic Load — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">green ≤100 · amber ≤150 · red &gt;150</span></h3>
           <div class="chart-wrap"><canvas id="chart-gl"></canvas></div>
         </div>
 
-        <div class="chart-card card">
+        <div class="chart-card">
           <h3>Weight History</h3>
           <div class="chart-wrap"><canvas id="chart-weight-stats"></canvas></div>
         </div>
@@ -341,7 +344,7 @@
           <div id="weight-error" class="error-msg hidden"></div>
         </div>
 
-        <div class="chart-card card">
+        <div class="chart-card">
           <h3>Weight History</h3>
           <div class="chart-wrap"><canvas id="chart-weight"></canvas></div>
         </div>
@@ -457,19 +460,19 @@
 
     <nav id="bottom-nav">
       <button class="nav-item active" data-view="today">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span class="ti"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
         <span>Today</span>
       </button>
       <button class="nav-item" data-view="stats">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        <span>Stats</span>
+        <span class="ti"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/></svg></span>
+        <span>Progress</span>
       </button>
       <button class="nav-item" data-view="weight">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5a6 6 0 1 0 11 0"/><path d="M3 21h18"/><path d="M12 3v3"/></svg>
-        <span>Weight</span>
+        <span class="ti"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="m19 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"/><path d="m5 8 3 8a5 5 0 0 1-6 0zV7"/><path d="M7 21h10"/></svg></span>
+        <span>Body</span>
       </button>
       <button class="nav-item" data-view="profile">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span class="ti"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
         <span>Profile</span>
       </button>
     </nav>
@@ -542,9 +545,9 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>window.arcReady = new Promise(r => { window.__arcResolve = r; });</script>
-<script type="module" src="cloud.js?v=13"></script>
-<script src="metabolic.js?v=13"></script>
-<script src="arcsync.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script type="module" src="cloud.js?v=14"></script>
+<script src="metabolic.js?v=14"></script>
+<script src="arcsync.js?v=14"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

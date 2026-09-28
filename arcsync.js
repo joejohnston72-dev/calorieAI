@@ -216,6 +216,7 @@ document.addEventListener('click', async e => {
 
 async function onArcSignedIn() {
   const changed = await arcSync();
+  renderTrainTile();
   showToast('Signed in to ARC');
   const onSetup = !document.getElementById('setup-screen').classList.contains('hidden');
   if (onSetup && getProfile()) launchApp();       // restored an existing profile
@@ -231,10 +232,30 @@ function refreshAfterArcSync() {
   renderProfileView();
 }
 
+// ── Train tile: what ARC says about today (done / planned / rest) ─────────
+async function renderTrainTile() {
+  const val = document.getElementById('train-val');
+  if (!val) return;
+  const lbl = document.getElementById('train-lbl'), sub = document.getElementById('train-sub');
+  const open = `Open ${icon('arrow-right', 11)}`;
+  const api = await arcApi(6000);
+  let t = null;
+  try { if (api && arcUser) t = await api.training(todayStr()); } catch { t = null; }
+  if (t?.status === 'done') {
+    val.textContent = t.title; lbl.textContent = 'Trained today';
+    sub.innerHTML = t.mins ? `${t.mins} min · ${open}` : open;
+  } else if (t?.status === 'planned') {
+    val.textContent = t.title; lbl.textContent = 'Planned today';
+    sub.innerHTML = `${t.exercises} exercises · ${open}`;
+  } else {
+    val.textContent = 'ARC'; lbl.textContent = t ? 'Rest day' : 'Training'; sub.innerHTML = open;
+  }
+}
+
 // Boot: learn the session, render the account boxes, then full-sync.
 function initArcSync() {
   renderArcAccount();
-  arcSync().then(changed => { if (changed) refreshAfterArcSync(); });
+  arcSync().then(changed => { if (changed) refreshAfterArcSync(); renderTrainTile(); });
   window.addEventListener('online', () => { if (arcUser) arcSync().then(c => { if (c) refreshAfterArcSync(); }); });
   window.addEventListener('pagehide', () => { if (arcUser) arcPushNow(); });
 }

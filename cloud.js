@@ -55,6 +55,26 @@ const api = {
     return out;
   },
 
+  // Read-only peek at ARC's own store for the Train tile: today's logged
+  // session(s), else the routine planned for today. Small, targeted queries.
+  async training(date) {
+    const s = await session();
+    if (!s) return null;
+    const uid = s.user.id;
+    const { data: done } = await sb.from('entries').select('value')
+      .eq('user_id', uid).eq('store', 'workout').like('key', 'session-%').eq('value->>date', date).limit(5);
+    if (done && done.length) {
+      const v = done[0].value || {};
+      return { status: 'done', title: v.title || 'Workout', mins: Math.round((v.duration || 0) / 60), count: done.length };
+    }
+    const { data: plan } = await sb.from('entries').select('key, value')
+      .eq('user_id', uid).eq('store', 'workout').in('key', ['week-plan', 'templates']);
+    const get = k => (plan || []).find(r => r.key === k)?.value;
+    const tid = (get('week-plan') || {})[date];
+    const tpl = tid && (get('templates') || []).find(t => t.id === tid);
+    return tpl ? { status: 'planned', title: tpl.name, exercises: (tpl.exercises || []).length } : { status: 'none' };
+  },
+
   async upsert(rows) {
     const s = await session();
     if (!s || !rows.length) return 0;
