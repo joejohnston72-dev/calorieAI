@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com https://gist.githubusercontent.com https://xjcnkivlkfzdycbyxxlx.supabase.co wss://xjcnkivlkfzdycbyxxlx.supabase.co https://cdn.jsdelivr.net; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'">
   <title>ARC Fuel</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#131518">
@@ -14,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=15">
 </head>
 <body>
 <div id="app">
@@ -42,16 +43,16 @@
       <div class="card">
         <h2>Your Details</h2>
         <div class="field">
-          <label>Name</label>
+          <label for="s-name">Name</label>
           <input type="text" id="s-name" class="input" placeholder="Joe">
         </div>
         <div class="field-row">
           <div class="field">
-            <label>Age</label>
+            <label for="s-age">Age</label>
             <input type="number" id="s-age" class="input" placeholder="30" min="10" max="100">
           </div>
           <div class="field">
-            <label>Sex</label>
+            <label for="s-sex">Sex</label>
             <select id="s-sex" class="input">
               <option value="male">Male</option>
               <option value="female">Female</option>
@@ -60,16 +61,16 @@
         </div>
         <div class="field-row">
           <div class="field">
-            <label>Height (cm)</label>
+            <label for="s-height">Height (cm)</label>
             <input type="number" id="s-height" class="input" placeholder="175">
           </div>
           <div class="field">
-            <label>Weight (kg)</label>
+            <label for="s-weight">Weight (kg)</label>
             <input type="number" id="s-weight" class="input" placeholder="70" step="0.1">
           </div>
         </div>
         <div class="field">
-          <label>Activity Level</label>
+          <label for="s-activity">Activity Level</label>
           <select id="s-activity" class="input">
             <option value="1.2">Sedentary (desk job, no exercise)</option>
             <option value="1.375">Light (1–3 workouts/week)</option>
@@ -125,7 +126,7 @@
 
         <!-- Priority rings: Calories + Protein large, Carbs + Fat smaller -->
         <section class="rings-card fuel-hero" aria-label="Today's fuel">
-          <div class="eyebrow eyebrow-fuel"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>Fuel · today</div>
+          <div class="eyebrow eyebrow-fuel"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>Fuel · <span id="hero-day">today</span></div>
 
           <!-- Row 1: Key metrics -->
           <div class="rings-row rings-row-primary">
@@ -233,7 +234,8 @@
             <div class="spinner"></div>
             <span id="loading-text">Looking up nutrition...</span>
           </div>
-          <div id="add-error" class="error-msg hidden"></div>
+          <div id="add-error" class="error-msg hidden" role="alert"></div>
+            <button type="button" id="manual-add-btn" class="link-btn manual-add">Enter manually</button>
         </div>
 
         </section>
@@ -264,7 +266,7 @@
         <div id="fav-section" class="fav-section hidden">
           <div class="fav-header">
             <span><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>Quick add</span>
-            <button id="fav-manage-btn" class="fav-manage-btn">Manage</button>
+            <button id="fav-manage-btn" class="fav-manage-btn">Edit</button>
           </div>
           <div id="fav-chips" class="fav-chips"></div>
         </div>
@@ -273,8 +275,11 @@
           <div class="log-header-row">
             <h3 class="sec-title">Food log</h3>
             <div class="log-header-right">
-              <span id="accuracy-badge" class="accuracy-badge hidden"></span>
-              <span id="log-date-label" class="muted-text"></span>
+              <div class="day-nav" role="group" aria-label="Choose day">
+                <button type="button" id="day-prev" class="day-btn" aria-label="Previous day"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+                <span id="log-date-label" class="day-label" aria-live="polite">Today</span>
+                <button type="button" id="day-next" class="day-btn" aria-label="Next day"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+              </div>
             </div>
           </div>
           <div id="food-log"></div>
@@ -295,9 +300,9 @@
             <div class="stat-sub">kcal/day</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">7-Day Avg</div>
+            <div class="stat-label">7-day avg</div>
             <div id="stat-avg" class="stat-value">--</div>
-            <div class="stat-sub">kcal/day</div>
+            <div class="stat-sub">kcal/day · complete days</div>
           </div>
           <div class="stat-card">
             <div class="stat-label">Streak</div>
@@ -357,16 +362,16 @@
         <div class="card">
           <h3>Profile</h3>
           <div class="field">
-            <label>Name</label>
+            <label for="p-name">Name</label>
             <input type="text" id="p-name" class="input">
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Age</label>
+              <label for="p-age">Age</label>
               <input type="number" id="p-age" class="input">
             </div>
             <div class="field">
-              <label>Sex</label>
+              <label for="p-sex">Sex</label>
               <select id="p-sex" class="input">
                 <option value="male">Male</option>
                 <option value="female">Female</option>
@@ -375,16 +380,16 @@
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Height (cm)</label>
+              <label for="p-height">Height (cm)</label>
               <input type="number" id="p-height" class="input">
             </div>
             <div class="field">
-              <label>Weight (kg)</label>
+              <label for="p-weight">Weight (kg)</label>
               <input type="number" id="p-weight" class="input" step="0.1">
             </div>
           </div>
           <div class="field">
-            <label>Activity Level</label>
+            <label for="p-activity">Activity Level</label>
             <select id="p-activity" class="input">
               <option value="1.2">Sedentary</option>
               <option value="1.375">Lightly Active</option>
@@ -394,7 +399,7 @@
             </select>
           </div>
           <div class="field">
-            <label>Daily Calorie Goal</label>
+            <label for="p-goal">Daily Calorie Goal</label>
             <input type="number" id="p-goal" class="input">
           </div>
           <button id="save-profile-btn" class="btn-primary full-width">Save profile</button>
@@ -405,17 +410,17 @@
           <p class="hint" style="margin-bottom:12px">Override the defaults. Higher protein recommended for body recomp.</p>
           <div class="field-row">
             <div class="field">
-              <label>Protein (g)</label>
+              <label for="p-macro-protein">Protein (g)</label>
               <input type="number" id="p-macro-protein" class="input" placeholder="e.g. 180">
             </div>
             <div class="field">
-              <label>Carbs (g)</label>
+              <label for="p-macro-carbs">Carbs (g)</label>
               <input type="number" id="p-macro-carbs" class="input" placeholder="e.g. 200">
             </div>
           </div>
           <div class="field-row">
             <div class="field">
-              <label>Fat (g)</label>
+              <label for="p-macro-fat">Fat (g)</label>
               <input type="number" id="p-macro-fat" class="input" placeholder="e.g. 70">
             </div>
             <div class="field macro-cal-preview">
@@ -423,6 +428,8 @@
               <div id="macro-cal-preview" class="macro-cal-val">--</div>
             </div>
           </div>
+          <p id="macro-goal-note" class="hint" aria-live="polite"></p>
+          <button type="button" id="macro-fit-btn" class="btn-secondary full-width hidden" style="margin-bottom:8px">Fit carbs to my goal</button>
           <button id="save-macros-btn" class="btn-primary full-width">Save macro targets</button>
         </div>
 
@@ -440,7 +447,7 @@
           <h3>Legacy backup (GitHub Gist)</h3>
           <p class="hint" style="margin-bottom:10px">Your ARC account now syncs everything. Keep this only to restore an old Gist backup; it can be disconnected once your data is in ARC.</p>
           <div class="field">
-            <label>GitHub Token (gist scope)</label>
+            <label for="p-gist-token">GitHub Token (gist scope)</label>
             <input type="password" id="p-gist-token" class="input" placeholder="github_pat_... or ghp_...">
           </div>
           <div id="sync-status" class="sync-status">Not connected</div>
@@ -481,58 +488,63 @@
 
   <!-- EDIT ENTRY MODAL -->
   <div id="edit-modal" class="modal-overlay hidden">
-    <div class="modal-sheet">
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="edit-title">
       <div class="modal-header">
-        <h3>Edit entry</h3>
+        <h3 id="edit-title">Edit entry</h3>
         <button id="modal-close" class="modal-close" aria-label="Close"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div class="field">
-        <label>Name</label>
+        <label for="edit-name">Name</label>
         <input type="text" id="edit-name" class="input">
       </div>
       <div class="field">
-        <label>Serving</label>
+        <label for="edit-serving">Serving</label>
         <input type="text" id="edit-serving" class="input">
       </div>
       <div class="field-row">
         <div class="field">
-          <label>Calories</label>
+          <label for="edit-cal">Calories</label>
           <input type="number" id="edit-cal" class="input">
         </div>
         <div class="field">
-          <label>Protein (g)</label>
+          <label for="edit-protein">Protein (g)</label>
           <input type="number" id="edit-protein" class="input" step="0.1">
         </div>
       </div>
       <div class="field-row">
         <div class="field">
-          <label>Carbs (g)</label>
+          <label for="edit-carbs">Carbs (g)</label>
           <input type="number" id="edit-carbs" class="input" step="0.1">
         </div>
         <div class="field">
-          <label>Fat (g)</label>
+          <label for="edit-fat">Fat (g)</label>
           <input type="number" id="edit-fat" class="input" step="0.1">
         </div>
       </div>
+      <div id="edit-error" class="error-msg hidden" role="alert"></div>
       <button id="edit-save-btn" class="btn-primary full-width">Save changes</button>
+      <div id="edit-entry-actions" class="edit-entry-actions">
+        <button type="button" id="edit-fav-btn" class="btn-secondary"></button>
+        <button type="button" id="edit-delete-btn" class="btn-danger"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Delete</button>
+      </div>
     </div>
   </div>
 
   <!-- LOG BLOOD READING (GKI) MODAL -->
   <div id="gki-modal" class="modal-overlay hidden">
-    <div class="modal-sheet">
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="gki-title">
       <div class="modal-header">
-        <h3>Log blood reading</h3>
+        <h3 id="gki-title">Log blood reading</h3>
         <button id="gki-close" class="modal-close" aria-label="Close"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <p class="hint" style="margin-bottom:12px">From a blood meter (e.g. Keto-Mojo). Both values in mmol/L. GKI = glucose ÷ ketones.</p>
       <div class="field-row">
         <div class="field">
-          <label>Glucose (mmol/L)</label>
+          <label for="gki-glucose">Glucose (mmol/L)</label>
           <input type="number" id="gki-glucose" class="input" step="0.1" placeholder="5.2">
         </div>
         <div class="field">
-          <label>Ketones (mmol/L)</label>
+          <label for="gki-ketones">Ketones (mmol/L)</label>
           <input type="number" id="gki-ketones" class="input" step="0.1" placeholder="1.5">
         </div>
       </div>
@@ -543,11 +555,10 @@
   </div>
 </div><!-- /app -->
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>window.arcReady = new Promise(r => { window.__arcResolve = r; });</script>
-<script type="module" src="cloud.js?v=14"></script>
-<script src="metabolic.js?v=14"></script>
-<script src="arcsync.js?v=14"></script>
-<script src="app.js?v=14"></script>
+<script src="boot.js?v=15"></script>
+<script type="module" src="cloud.js?v=15"></script>
+<script src="metabolic.js?v=15"></script>
+<script src="arcsync.js?v=15"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

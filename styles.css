@@ -871,3 +871,36 @@ select.input {
 .goal-info-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 .goal-info-text b { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
 .gi-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+
+/* ── Log rows: tap the row to edit (one big target, no tiny icon buttons) ── */
+.food-entry[data-entry-id] { cursor: pointer; align-items: center; border-radius: 10px; margin: 0 -6px; padding: 12px 6px; -webkit-tap-highlight-color: transparent; }
+.food-entry[data-entry-id]:active { background: var(--surface); }
+.food-entry[data-entry-id]:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.food-entry-chev { color: var(--muted); opacity: .6; display: inline-flex; }
+.fav-mark { color: var(--amber); margin-right: 4px; display: inline-flex; vertical-align: -1px; }
+.food-entry-pending { opacity: .65; }
+.food-entry-pending .food-entry-serving { color: var(--amber); }
+
+/* ── Day navigation (edit past days) ── */
+.day-nav { display: flex; align-items: center; gap: 2px; }
+.day-btn { background: none; border: 0; color: var(--text); width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.day-btn:disabled { opacity: .25; cursor: default; }
+.day-btn:not(:disabled):active { background: var(--surface); }
+.day-label { font-size: 13px; color: var(--muted); min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* ── Manual entry + edit sheet actions ── */
+.manual-add { display: block; margin: 8px auto 0; min-height: 44px; font-size: 13px; color: var(--blue); text-decoration: none; }
+.edit-entry-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.edit-entry-actions .lc { margin-right: 6px; }
+.edit-entry-actions button { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+
+/* ── Quick add: edit mode removes chips ── */
+.fav-chips.managing .fav-chip { border-color: rgba(var(--red-rgb), 0.45); position: relative; }
+.fav-chip-x { position: absolute; top: 6px; right: 6px; color: var(--red); display: inline-flex; }
+.fav-manage-btn { min-height: 44px; padding: 0 4px; }
+
+/* ── 44px touch targets on sheet chrome ── */
+.modal-close, .photo-clear-btn { min-width: 44px; min-height: 44px; }
+.macro-goal-note, #macro-goal-note { margin: 10px 0 8px; }
+.food-entry[data-entry-id] { border-radius: 0; margin: 0; padding: 12px 0; }
+.food-entry-name .fav-mark .lc { color: var(--amber); }

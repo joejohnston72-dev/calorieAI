@@ -104,7 +104,7 @@ const fmtGKI = g => (g == null || !isFinite(g)) ? '--' : (g >= 10 ? Math.round(g
 // ── Today snapshot tile ───────────────────────────────────────────
 // GL is the tile's number; GKI is its sub-line. A measured GKI shows its value,
 // an estimate only its zone (a heuristic must not look like a measurement).
-function renderMetabolicToday(entries) {
+function renderMetabolicToday(entries, day = todayStr()) {
   const glEl = document.getElementById('metab-gl-val');
   if (!glEl) return;
   entries = entries || [];
@@ -114,8 +114,10 @@ function renderMetabolicToday(entries) {
   glEl.textContent = gl || '0';
   glEl.className = `snap-val gl-text-${glZ.cls}`;
 
-  const measured = measuredGKIForDate(todayStr());
-  const gki = measured != null ? measured : estimateGKIForDay(entries, Date.now());
+  const measured = measuredGKIForDate(day);
+  // Past day: estimate as of 3 h after its last meal (as the Stats chart did).
+  const ref = day === todayStr() ? Date.now() : Math.max(0, ...entries.map(e => e.ts || 0)) + 3 * 3600000;
+  const gki = measured != null ? measured : estimateGKIForDay(entries, ref);
   const z = gkiZone(gki);
   const sub = document.getElementById('metab-gki-val');
   sub.className = `snap-sub gki-text-${z.cls}`;
@@ -129,9 +131,9 @@ function openGkiModal() {
   document.getElementById('gki-ketones').value = '';
   document.getElementById('gki-error').classList.add('hidden');
   updateGkiPreview();
-  document.getElementById('gki-modal').classList.remove('hidden');
+  openSheet('gki-modal', 'gki-glucose');
 }
-function closeGkiModal() { document.getElementById('gki-modal').classList.add('hidden'); }
+function closeGkiModal() { closeSheet('gki-modal'); }
 function updateGkiPreview() {
   const g = parseFloat(document.getElementById('gki-glucose').value);
   const k = parseFloat(document.getElementById('gki-ketones').value);
