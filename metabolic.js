@@ -83,6 +83,7 @@ function estimateGKIRaw(carbs, hoursSinceLast) {
   return glu / ket;
 }
 function estimateGKIForDay(entries, refTs) {
+  if (!(entries || []).length) return null;   // nothing logged → no basis for an estimate
   const carbs = (entries || []).reduce((s, e) => s + (e.c || 0), 0);
   const lastTs = (entries || []).length ? Math.max(...entries.map(e => e.ts || 0)) : null;
   const hrs = lastTs ? Math.max(0, (refTs - lastTs) / 3600000) : 10;
@@ -123,7 +124,7 @@ function renderMetabolicToday(entries) {
   gkiValEl.textContent = fmtGKI(gki);
   gkiValEl.className = `metab-value gki-text-${z.cls}`;
   document.getElementById('metab-gki-zone').textContent = z.label;
-  document.getElementById('metab-gki-src').textContent = measured != null ? 'measured' : 'estimated';
+  document.getElementById('metab-gki-src').textContent = measured != null ? 'measured' : gki == null ? '' : 'estimated';
   document.getElementById('metab-gki-src').className =
     `metab-src ${measured != null ? 'src-measured' : 'src-estimated'}`;
 
@@ -156,7 +157,7 @@ function saveGkiReading() {
   const k = parseFloat(document.getElementById('gki-ketones').value);
   const err = document.getElementById('gki-error');
   if (!isFinite(g) || g <= 0 || g > 40)  { err.textContent = 'Enter a glucose value in mmol/L (e.g. 5.2).'; err.classList.remove('hidden'); return; }
-  if (!isFinite(k) || k < 0 || k > 10)   { err.textContent = 'Enter a ketone value in mmol/L (e.g. 1.5).'; err.classList.remove('hidden'); return; }
+  if (!isFinite(k) || k < 0.1 || k > 10) { err.textContent = 'Enter a ketone value from 0.1 to 10 mmol/L (meters read "LO" below 0.1).'; err.classList.remove('hidden'); return; }
   const list = getGki();
   list.push({ id: Date.now().toString(), date: todayStr(), ts: Date.now(), glucose: g, ketones: k });
   saveGki(list);

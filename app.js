@@ -197,7 +197,9 @@ function confClass(pct) {
 }
 
 // ── DATE ───────────────────────────────────────────────────────
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Local calendar day (toISOString is UTC — logged into yesterday after midnight BST)
+const ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayStr = () => ymdLocal(new Date());
 
 function fmtDate(s) {
   const d = new Date(s + 'T00:00:00');
@@ -352,6 +354,7 @@ function navigate(view) {
 
 // ── TODAY VIEW ─────────────────────────────────────────────────
 function updateTodayView() {
+  lastShownDay = todayStr();
   const profile = getProfile();
   const logs    = getLogs();
   const entries = logs[todayStr()] || [];
@@ -417,7 +420,7 @@ function updateTodayView() {
   const projEl = document.getElementById('projection-display');
   if (entries.length > 0) {
     const projectedCal = entries.reduce((sum, e) => {
-      const bias = e.conf >= 90 ? 1.00 : e.conf >= 75 ? 1.10 : 1.18;
+      const bias = e.conf == null || e.conf >= 90 ? 1.00 : e.conf >= 75 ? 1.10 : 1.18;
       return sum + (e.cal * bias);
     }, 0);
     const diff     = Math.round(projectedCal - tot.cal);
@@ -518,15 +521,36 @@ function fileToBase64(file) {
   });
 }
 
+// Long edge 1568px, JPEG q0.82 — ~200–400 KB instead of a 3–12 MB original.
+function downscaleImage(file, maxEdge = 1568) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve({ base64: c.toDataURL('image/jpeg', 0.82).split(',')[1], mediaType: 'image/jpeg' });
+    };
+    img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
 function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
+let addInFlight = false;
 async function addFood() {
+  if (addInFlight) return;
   const input = document.getElementById('food-input');
   const desc  = input.value.trim();
 
@@ -545,6 +569,7 @@ async function addFood() {
   const errEl   = document.getElementById('add-error');
 
   const wasPhoto = !!pendingPhoto;
+  addInFlight = true;
   btn.disabled = true;
   errEl.classList.add('hidden');
 
@@ -566,6 +591,16 @@ async function addFood() {
       loading.classList.remove('hidden');
       n = await lookupNutrition(desc, apiKey);
     }
+
+    // The model's numbers are untrusted: strings concatenate and nulls NaN the totals.
+    const num = v => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : NaN; };
+    n.calories = num(n.calories); n.protein_g = num(n.protein_g);
+    n.carbs_g = num(n.carbs_g); n.fat_g = num(n.fat_g);
+    if ([n.calories, n.protein_g, n.carbs_g, n.fat_g].some(Number.isNaN)) {
+      throw new Error('The AI returned incomplete numbers. Try again, or add more detail.');
+    }
+    n.name = String(n.name || desc || 'Meal').slice(0, 120);
+    n.serving = String(n.serving || '').slice(0, 120);
 
     const logs = getLogs();
     const d    = todayStr();
@@ -593,6 +628,7 @@ async function addFood() {
     errEl.textContent = `Error: ${err.message}`;
     errEl.classList.remove('hidden');
   } finally {
+    addInFlight = false;
     btn.disabled = false;
     loading.classList.add('hidden');
   }
@@ -717,11 +753,11 @@ function renderFavourites() {
   section.classList.remove('hidden');
 
   chips.innerHTML = favs.map((f, i) => `
-    <div class="fav-chip" onclick="quickAddFavourite(${JSON.stringify(f).replace(/"/g,'&quot;')})">
+    <button type="button" class="fav-chip" data-fav-idx="${i}">
       <div class="fav-chip-name">${esc(f.name)}</div>
       <div class="fav-chip-cal">${Math.round(f.cal)} kcal</div>
       <div class="fav-chip-macros">P${Math.round(f.p)} C${Math.round(f.c)} F${Math.round(f.f)}</div>
-    </div>
+    </button>
   `).join('');
 }
 
@@ -729,8 +765,9 @@ function renderFavourites() {
 function last14() {
   return Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
+    d.setHours(12, 0, 0, 0);
     d.setDate(d.getDate() - (13 - i));
-    return d.toISOString().slice(0, 10);
+    return ymdLocal(d);
   });
 }
 function last7() { return last14().slice(7); }
@@ -739,9 +776,10 @@ function calcStreak() {
   const logs = getLogs();
   let streak = 0;
   const d = new Date();
+  d.setHours(12, 0, 0, 0);
   if (!(logs[todayStr()] || []).length) d.setDate(d.getDate() - 1);
   while (true) {
-    const k = d.toISOString().slice(0, 10);
+    const k = ymdLocal(d);
     if (!(logs[k] || []).length) break;
     streak++;
     d.setDate(d.getDate() - 1);
@@ -1068,6 +1106,11 @@ function initEvents() {
     btn.addEventListener('click', () => navigate(btn.dataset.view)));
 
   document.getElementById('add-btn').addEventListener('click', addFood);
+  document.getElementById('fav-chips').addEventListener('click', e => {
+    const chip = e.target.closest('[data-fav-idx]');
+    const fav = chip && getFavs()[+chip.dataset.favIdx];
+    if (fav) quickAddFavourite(fav);
+  });
   document.getElementById('food-input').addEventListener('keypress', e => {
     if (e.key === 'Enter') addFood();
   });
@@ -1076,8 +1119,9 @@ function initEvents() {
   document.getElementById('camera-input').addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
-    const base64    = await fileToBase64(file);
-    const mediaType = file.type || 'image/jpeg';
+    let base64, mediaType;
+    try { ({ base64, mediaType } = await downscaleImage(file)); }
+    catch { base64 = await fileToBase64(file); mediaType = file.type || 'image/jpeg'; }
     pendingPhoto = { base64, mediaType };
 
     // Show preview
@@ -1148,9 +1192,21 @@ function initEvents() {
   document.getElementById('gist-connect-btn').addEventListener('click', async () => {
     const token = document.getElementById('p-gist-token').value.trim();
     if (!token) { setSyncStatus('Enter a token first'); return; }
+    if (token !== getGistToken()) localStorage.removeItem('cai_gist_id');
     setGistToken(token);
     setSyncStatus('Connecting…');
     try {
+      // A backup may already exist (reinstall / new device). Pushing now would
+      // replace that history with this device's data, so restore first.
+      const existing = await cloudPull().catch(() => null);
+      if (existing && existing.lastModified > (getMeta().lastModified || 0)) {
+        applyBackupPayload(existing);
+        updateTodayView(); renderProfileView();
+        setSyncStatus(`Restored cloud backup from ${new Date(existing.lastModified).toLocaleString('en-GB')}`);
+        showToast('Restored from cloud');
+        document.getElementById('gist-disconnect-btn').classList.remove('hidden');
+        return;
+      }
       await cloudPush();
       showToast('Backed up to cloud');
       document.getElementById('gist-disconnect-btn').classList.remove('hidden');
@@ -1228,15 +1284,24 @@ function initEvents() {
 
   document.getElementById('clear-btn').addEventListener('click', () => {
     if (confirm('Delete all data? This cannot be undone.')) {
-      localStorage.clear();
+      // Same origin as ARC (joejohnston72-dev.github.io) — never localStorage.clear().
+      Object.keys(localStorage).filter(k => k.startsWith('cai_')).forEach(k => localStorage.removeItem(k));
       location.reload();
     }
   });
 }
 
+var lastShownDay = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !getProfile()) return;
+  if (lastShownDay !== todayStr()) updateTodayView();
+  if (cloudEnabled()) syncOnLaunch().then(changed => { if (changed) { updateTodayView(); renderProfileView(); } });
+});
+
 function init() {
   initSetup();
   initEvents();
+  lastShownDay = todayStr();
   if (getProfile()) {
     launchApp();
     // Background sync: pull newer data from other devices, then refresh
