@@ -786,3 +786,88 @@ select.input {
 .btn-secondary:active, .fav-chip:active, .btn-camera:active { transform: scale(0.98); }
 .btn-secondary, .fav-chip, .btn-camera { transition: transform 0.18s var(--ease), border-color 0.18s var(--ease); }
 .metab-value-zone { font-size: 18px; line-height: 1.3; padding: 8px 0 4px; }
+
+/* ══ ARC components (mirrors arc/workout/index.html — keep in step) ══════════
+   Colour says WHICH pillar; shape says WHAT KIND of thing it is.
+   Fuel hero = the one raised thing here · Progress = open data · Coach = a voice
+   Lists = rows with dividers, never a box per item. */
+
+/* Header: title left, meta right (ARC: "Monday · Week 40 · day 1") */
+#app-header { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 12px; }
+#header-title { font-size: 30px; letter-spacing: -0.6px; }
+.header-meta, #header-sub { font-size: 13px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* Eyebrow label with icon (ARC: "⚡ NEXT IN YOUR SPLIT") */
+.eyebrow { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: var(--fw-bold);
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.eyebrow-fuel { color: var(--fuel); margin: 2px 4px 10px; }
+.eyebrow-coach { color: var(--coach); margin-bottom: 6px; }
+
+/* Fuel hero — ARC's hero shape (.next-card), in the Fuel hue */
+.rings-card.fuel-hero {
+  border-radius: 22px; padding: 18px 14px 16px; margin-bottom: 12px;
+  background: linear-gradient(165deg, color-mix(in srgb, var(--fuel) 14%, var(--surface)), var(--surface) 72%);
+  border: 1px solid rgba(var(--orange-rgb), 0.24);
+  box-shadow: 0 18px 34px -24px rgba(var(--orange-rgb), 0.55);
+}
+.fuel-hero .add-section { margin: 14px 2px 0; }
+.fuel-hero .input { background: rgba(0,0,0,0.22); }
+.fuel-hero .btn-add { border-radius: 14px; }
+.fuel-hero .btn-camera { background: transparent; }
+
+/* Coach voice — lavender wash, speech corner, no border */
+.coach-note { background: color-mix(in srgb, var(--coach) 9%, var(--bg)); border-radius: 20px 20px 20px 6px;
+  padding: 14px 15px; margin-bottom: 12px; font-size: 14px; line-height: 1.5; }
+.coach-note b { font-weight: var(--fw-bold); color: var(--text); }
+
+/* Snapshot row — identical to ARC's .dash-snapshot */
+.dash-snapshot { display: grid; grid-template-columns: minmax(0,0.9fr) minmax(0,1fr) minmax(0,1fr); gap: 8px; margin-bottom: 18px; }
+.snap-tile { font: inherit; color: inherit; text-align: left; text-decoration: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 11px 12px;
+  display: flex; flex-direction: column; gap: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; min-width: 0; }
+.snap-tile:active { transform: scale(0.98); }
+#tileStreak { background: none; border: 0; border-radius: 0; padding: 8px 10px 8px 2px; border-right: 1px solid var(--border); }
+.tile-wash { background: color-mix(in srgb, var(--fuel) 8%, var(--bg)); border-color: transparent; border-radius: 16px; }
+.tile-train { background: color-mix(in srgb, var(--blue) 8%, var(--bg)); }
+.snap-ico { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
+.ico-prog  { background: rgba(var(--teal-rgb),0.14);   color: var(--prog); }
+.ico-fuel  { background: rgba(var(--orange-rgb),0.16); color: var(--fuel); }
+.ico-train { background: rgba(var(--blue-rgb),0.16);   color: var(--blue); }
+.snap-val { font-size: 17px; font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tileStreak .snap-val { font-size: 20px; letter-spacing: -0.4px; }
+.snap-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin-top: 3px; }
+.snap-sub { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 3px; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Section heads + open lists (ARC: "RECENT ········ All history") */
+.fav-header, .log-header-row { padding: 0 2px; }
+.sec-title, .log-header-row h3 { font-size: 13px; font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.log-section { background: none; border: 0; padding: 4px 0 0; }
+.fav-manage-btn { color: var(--blue); font-size: 13px; }
+
+/* Tab bar — ARC's: pill behind the active icon, colour per pillar */
+.nav-item { font-size: 11px; gap: 3px; }
+.nav-item .ti { display: flex; align-items: center; justify-content: center; height: 24px; position: relative; isolation: isolate; }
+.nav-item.active .ti::before { content: ''; position: absolute; inset: -4px -12px; z-index: -1; border-radius: 10px; background: currentColor; opacity: .14; }
+.nav-item[data-view="today"].active, .nav-item[data-view="weight"].active { color: var(--fuel); }
+.nav-item[data-view="stats"].active { color: var(--prog); }
+.nav-item[data-view="profile"].active { color: var(--blue); }
+#bottom-nav { border-top: 1px solid var(--border); background: rgba(28,31,35,0.86); }
+
+/* Progress — open data: numbers on the canvas, hairlines, teal */
+.stats-cards { gap: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+.stat-card { background: none; border: 0; border-radius: 0; text-align: left; padding: 14px 4px; }
+.stat-card:nth-child(odd) { border-right: 1px solid var(--border); }
+.stat-card:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
+.stat-card:nth-child(even) { padding-left: 16px; }
+#stat-streak { color: var(--prog); }
+.chart-card { background: none; border: 0; border-radius: 0; padding: 4px 0 18px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+.chart-card h3 { color: var(--prog); font-size: 12px; letter-spacing: 0.08em; }
+#view-weight .chart-card h3 { color: var(--fuel); }
+.weight-entry { background: none; border-radius: 0; border-bottom: 1px solid var(--border); padding: 12px 2px; }
+.snap-sub { white-space: normal; line-height: 1.3; }
+.chart-card h3 span { text-transform: none; letter-spacing: 0; }
+.goal-info-text { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.goal-info-text b { font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.gi-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }

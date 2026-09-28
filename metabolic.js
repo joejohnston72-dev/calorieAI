@@ -101,39 +101,26 @@ function gkiZone(g) {
 }
 const fmtGKI = g => (g == null || !isFinite(g)) ? '--' : (g >= 10 ? Math.round(g) : g.toFixed(1));
 
-// ── Today card ────────────────────────────────────────────────────
+// ── Today snapshot tile ───────────────────────────────────────────
+// GL is the tile's number; GKI is its sub-line. A measured GKI shows its value,
+// an estimate only its zone (a heuristic must not look like a measurement).
 function renderMetabolicToday(entries) {
-  const card = document.getElementById('metabolic-card');
-  if (!card) return;
+  const glEl = document.getElementById('metab-gl-val');
+  if (!glEl) return;
   entries = entries || [];
 
-  // Glycemic Load
   const gl = Math.round(dayGL(entries));
   const glZ = dailyGLZone(gl);
-  const glValEl = document.getElementById('metab-gl-val');
-  glValEl.textContent = gl || '0';
-  glValEl.className = `metab-value gl-text-${glZ.cls}`;
-  document.getElementById('metab-gl-zone').textContent = `${glZ.label} · today`;
+  glEl.textContent = gl || '0';
+  glEl.className = `snap-val gl-text-${glZ.cls}`;
 
-  // GKI — prefer a measured reading today, else the meal-based estimate.
-  const today = todayStr();
-  const measured = measuredGKIForDate(today);
+  const measured = measuredGKIForDate(todayStr());
   const gki = measured != null ? measured : estimateGKIForDay(entries, Date.now());
   const z = gkiZone(gki);
-  const gkiValEl = document.getElementById('metab-gki-val');
-  // An estimate is a heuristic, so it is shown as a zone only — never as an
-  // exact-looking number. Only a blood reading gets a GKI value.
-  const isEst = measured == null && gki != null;
-  gkiValEl.textContent = isEst ? z.label : fmtGKI(gki);
-  gkiValEl.className = `metab-value gki-text-${z.cls}${isEst ? ' metab-value-zone' : ''}`;
-  document.getElementById('metab-gki-zone').textContent = isEst ? 'likely zone' : z.label;
-  document.getElementById('metab-gki-src').textContent = measured != null ? 'measured' : gki == null ? '' : 'estimated';
-  document.getElementById('metab-gki-src').className =
-    `metab-src ${measured != null ? 'src-measured' : 'src-estimated'}`;
-
-  document.getElementById('metab-hint').textContent = measured != null
-    ? 'GKI from your latest blood reading today.'
-    : 'Zone estimated from today’s carbs and time since eating. Log a blood reading for your actual GKI.';
+  const sub = document.getElementById('metab-gki-val');
+  sub.className = `snap-sub gki-text-${z.cls}`;
+  sub.textContent = measured != null ? `GKI ${fmtGKI(gki)} · ${z.label}`
+    : gki == null ? 'GKI: tap to log' : `${z.label} (est.)`;
 }
 
 // ── Log-reading modal ─────────────────────────────────────────────
