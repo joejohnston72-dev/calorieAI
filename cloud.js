@@ -89,7 +89,7 @@ const api = {
   },
 
   // Anthropic Messages call through ARC's Edge Function (server-side key, SSE).
-  // Returns the concatenated text. Throws Error with .code for the caller's fallback.
+  // Returns the tool-input JSON (or the text). Throws Error with .code for the caller's fallback.
   async ai(body) {
     const s = await session();
     if (!s) { const e = new Error('Not signed in'); e.code = 'auth'; throw e; }
@@ -106,7 +106,7 @@ const api = {
     }
     const reader = res.body.getReader();
     const dec = new TextDecoder();
-    let buf = '', text = '';
+    let buf = '', text = '', json = '';
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
@@ -118,11 +118,13 @@ const api = {
         try {
           const ev = JSON.parse(line.slice(5));
           if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') text += ev.delta.text;
+          // Forced tool calls stream their input as JSON fragments.
+          if (ev.type === 'content_block_delta' && ev.delta?.type === 'input_json_delta') json += ev.delta.partial_json;
           if (ev.type === 'error') throw new Error(ev.error?.message || 'AI stream error');
         } catch (e) { if (e.message && !(e instanceof SyntaxError)) throw e; }
       }
     }
-    return text;
+    return json || text;
   },
 };
 

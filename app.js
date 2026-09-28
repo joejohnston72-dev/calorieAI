@@ -179,6 +179,7 @@ const ICONS = {
   pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
   star:   '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
   x:      '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   bot:    '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
 };
 function icon(name, size = 18, filled = false) {
@@ -201,6 +202,27 @@ function confClass(pct) {
 // Local calendar day (toISOString is UTC — logged into yesterday after midnight BST)
 const ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const todayStr = () => ymdLocal(new Date());
+
+// The day the Today screen is showing. null = today (follows the clock);
+// a 'YYYY-MM-DD' string when browsing back to edit a past day.
+var viewDay = null;
+const activeDay = () => viewDay || todayStr();
+const isViewingToday = () => activeDay() === todayStr();
+// Timestamp for something logged on the viewed day: now, or the same clock
+// time on a past day (so it lands in the right meal group).
+function tsForActiveDay() {
+  if (isViewingToday()) return Date.now();
+  const [y, m, d] = activeDay().split('-').map(Number);
+  const now = new Date();
+  return new Date(y, m - 1, d, now.getHours(), now.getMinutes()).getTime();
+}
+function shiftViewDay(delta) {
+  const [y, m, d] = activeDay().split('-').map(Number);
+  const next = ymdLocal(new Date(y, m - 1, d + delta, 12));
+  if (next > todayStr()) return;
+  viewDay = next === todayStr() ? null : next;
+  updateTodayView();
+}
 
 function fmtDate(s) {
   const d = new Date(s + 'T00:00:00');
@@ -230,49 +252,112 @@ function bmiCat(b)   {
 }
 function goalCals(p) {
   const tdee = calcTDEE(p);
-  if (p.goalType === 'cut')    return tdee - 500;
+  // A cut never goes below BMR or the usual safe minimum (1,500 men / 1,200 women).
+  if (p.goalType === 'cut')    return Math.max(tdee - 500, Math.round(calcBMR(p)), p.sex === 'female' ? 1200 : 1500);
   if (p.goalType === 'bulk')   return tdee + 300;
   if (p.goalType === 'custom') return parseInt(p.customGoal) || tdee;
   return tdee;
 }
 
 // ── CLAUDE API ─────────────────────────────────────────────────
-// Prefer ARC's Edge Function proxy (server-side key) when signed in; fall back to
-// this device's own key.
+// Structured output: a forced tool whose input schema IS the nutrition record,
+// so the reply is always a JSON object in a fixed shape (no text to regex out).
+const NUTRITION_TOOL = {
+  name: 'record_nutrition',
+  description: 'Record the nutrition estimate for the food described or shown.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      name:           { type: 'string', description: 'Short display name' },
+      serving:        { type: 'string', description: "Serving used, e.g. '2 large eggs' or 'approx 150g chicken, 200g rice'" },
+      calories:       { type: 'integer' },
+      protein_g:      { type: 'number' },
+      carbs_g:        { type: 'number' },
+      fat_g:          { type: 'number' },
+      glycemic_index: { type: 'integer', description: 'Estimated GI 0-110 of the carb sources; 0 if no meaningful carbs' },
+      confidence:     { type: 'string', enum: ['high', 'medium', 'low'] },
+    },
+    required: ['name', 'serving', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'glycemic_index', 'confidence'],
+  },
+};
+
+const AI_TIMEOUT_MS = 45000;
+const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Prefer ARC's Edge Function proxy (server-side key, retries upstream) when
+// signed in; fall back to this device's own key.
 async function callClaude(messages, apiKey, maxTokens = 600) {
-  const body = { model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages };
+  const body = {
+    model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages,
+    tools: [NUTRITION_TOOL], tool_choice: { type: 'tool', name: NUTRITION_TOOL.name },
+  };
   let proxyErr = null;
   if (arcUser) {
     const api = await arcApi(4000);
     if (api) {
-      try { return parseAIJson(await api.ai(body)); }
+      try { return parseAIJson(await withTimeout(api.ai(body), AI_TIMEOUT_MS, 'Timed out')); }
       catch (e) { proxyErr = e; }
     }
   }
   if (!apiKey) {
-    throw new Error(proxyErr
+    const e = new Error(proxyErr
       ? `ARC's AI service didn't answer (${proxyErr.message}). Add your own API key in Profile to keep logging.`
       : 'Sign in to your ARC account or add an API key in Profile.');
+    e.network = !!proxyErr && !navigator.onLine;
+    throw e;
   }
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
+
+  // Direct call: timeout per attempt, up to 2 retries on 429/5xx/network.
+  for (let attempt = 0; ; attempt++) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), AI_TIMEOUT_MS);
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST', signal: ctl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify(body)
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      if (attempt < 2 && navigator.onLine) { await sleep(800 * (attempt + 1)); continue; }
+      const e = new Error(err.name === 'AbortError' ? 'The lookup timed out. Check your connection and try again.' : 'Couldn’t reach Claude. Check your connection.');
+      e.network = true;
+      throw e;
+    }
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.stop_reason === 'max_tokens') throw new Error('The answer was cut off. Try a shorter description.');
+      const tool = (data.content || []).find(b => b.type === 'tool_use');
+      if (tool) return tool.input;
+      return parseAIJson((data.content || []).map(b => b.text || '').join(''));
+    }
+    if ((res.status === 429 || res.status >= 500) && attempt < 2) {
+      const wait = Number(res.headers.get('retry-after')) * 1000 || 1000 * (attempt + 1);
+      await sleep(Math.min(wait, 8000));
+      continue;
+    }
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error ${res.status}`);
+    const msg = {
+      401: 'That API key was rejected (401). Update it in Profile.',
+      403: 'That API key isn’t allowed to use this model (403).',
+      429: 'Rate limited by Anthropic (429). Try again in a minute.',
+      529: 'Claude is overloaded right now (529). Try again shortly.',
+    }[res.status];
+    throw new Error(msg || err.error?.message || `API error ${res.status}`);
   }
-  const data = await res.json();
-  return parseAIJson(data.content?.[0]?.text || '');
 }
 
+// The proxy streams the forced tool call back as JSON text; tolerate stray prose.
 function parseAIJson(raw) {
+  if (raw && typeof raw === 'object') return raw;
   const text = String(raw).trim();
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Unexpected AI response');
@@ -291,17 +376,7 @@ Rules:
 - Return data for the EXACT quantity described (e.g. "2 eggs" = data for 2 eggs)
 - If no quantity given, use a standard single serving
 
-Respond with ONLY valid JSON, no other text:
-{
-  "name": "clean short display name",
-  "serving": "serving description used (e.g. '2 large eggs', '1 can 400g')",
-  "calories": <integer>,
-  "protein_g": <number to 1dp>,
-  "carbs_g": <number to 1dp>,
-  "fat_g": <number to 1dp>,
-  "glycemic_index": <integer 0-110 — estimated glycemic index of this food; use 0 if it has no meaningful carbs (e.g. meat, eggs, oils)>,
-  "confidence": "high|medium|low"
-}`;
+Record the result with the record_nutrition tool.`;
 
   return callClaude([{ role: 'user', content: prompt }], apiKey);
 }
@@ -316,17 +391,7 @@ async function lookupNutritionFromImage(base64, mediaType, apiKey, extraContext 
 Identify all food items visible. Estimate portion sizes using visual cues (plate size, utensils, hands, packaging for scale).
 Be systematic: list what you see, estimate weights/quantities, then calculate nutrition.
 
-Respond with ONLY this JSON (no other text):
-{
-  "name": "brief meal description",
-  "serving": "estimated portions e.g. 'approx 150g chicken, 200g rice'",
-  "calories": <integer>,
-  "protein_g": <number to 1dp>,
-  "carbs_g": <number to 1dp>,
-  "fat_g": <number to 1dp>,
-  "glycemic_index": <integer 0-110 — estimated overall glycemic index of the carb sources in this meal; use 0 if it has no meaningful carbs>,
-  "confidence": "high|medium|low"
-}`;
+Record the result with the record_nutrition tool (name = brief meal description, serving = estimated portions).`;
 
   return callClaude([{
     role: 'user',
@@ -373,9 +438,10 @@ function navigate(view) {
 // ── TODAY VIEW ─────────────────────────────────────────────────
 function updateTodayView() {
   lastShownDay = todayStr();
+  const day     = activeDay();
   const profile = getProfile();
   const logs    = getLogs();
-  const entries = logs[todayStr()] || [];
+  const entries = logs[day] || [];
 
   const tot = entries.reduce((a, e) => ({
     cal: a.cal + e.cal,
@@ -434,7 +500,12 @@ function updateTodayView() {
     <span><b class="ring-label-fat">${fg}g</b> fat</span>
   ` : '';
 
-  document.getElementById('log-date-label').textContent = fmtDate(todayStr());
+  document.getElementById('log-date-label').textContent = isViewingToday() ? 'Today' : fmtDate(day);
+  document.getElementById('day-next').disabled = isViewingToday();
+  document.getElementById('hero-day').textContent = isViewingToday() ? 'today' : fmtDate(day);
+  if (document.getElementById('view-today').classList.contains('active')) {
+    document.getElementById('header-title').textContent = new Date(day + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long' });
+  }
 
   // Snapshot streak tile (Progress pillar: open, teal)
   const streak = calcStreak();
@@ -469,28 +540,23 @@ function updateTodayView() {
     projEl.classList.add('hidden');
   }
 
-  // Accuracy badge — weighted average of entries that have conf
-  const confEntries = entries.filter(e => e.conf);
-  const badge = document.getElementById('accuracy-badge');
-  if (confEntries.length) {
-    const avg = Math.round(confEntries.reduce((s, e) => s + e.conf, 0) / confEntries.length);
-    const cls = confClass(avg);
-    badge.textContent = `~${avg}% accurate`;
-    badge.className   = `accuracy-badge accuracy-${cls}`;
-    badge.classList.remove('hidden');
-  } else {
-    badge.classList.add('hidden');
-  }
-
   renderFoodLog(entries);
   renderFavourites();
-  renderMetabolicToday(entries);
+  renderMetabolicToday(entries, day);
 }
 
 function renderFoodLog(entries) {
   const el = document.getElementById('food-log');
-  if (!entries.length) {
-    el.innerHTML = '<div class="empty-log">No food logged yet.<br>Add something above!</div>';
+  const queued = getQueue().filter(q => q.date === activeDay());
+  const pendingHTML = queued.map(q => `
+    <div class="food-entry food-entry-pending">
+      <div class="food-entry-info">
+        <div class="food-entry-name">${esc(q.desc)}</div>
+        <div class="food-entry-serving">Saved offline · looks up when you’re back online</div>
+      </div>
+    </div>`).join('');
+  if (!entries.length && !queued.length) {
+    el.innerHTML = `<div class="empty-log">${isViewingToday() ? 'Nothing logged yet. Describe a meal above, snap a photo, or tap a quick add.' : 'Nothing logged on this day. Add something above to backfill it.'}</div>`;
     return;
   }
 
@@ -501,41 +567,34 @@ function renderFoodLog(entries) {
     (groups[m] = groups[m] || []).push(e);
   });
 
-  const favIds = new Set(getFavs().map(f => f.favId));
-
   el.innerHTML = order.filter(m => groups[m]).map(meal => `
     <div class="meal-group">
       <div class="meal-group-header">${meal}</div>
       ${groups[meal].map(e => {
-        const accPct = e.conf || null;
-        const accCls = accPct ? confClass(accPct) : '';
-        const isFav  = favIds.has(e.id) || getFavs().some(f => f.name === e.name && f.cal === e.cal);
+        const acc = e.conf != null && e.conf < 90 ? e.conf : null;   // only flag the estimates the note talks about
+        const fav = isFavEntry(e);
         return `
-        <div class="food-entry">
+        <div class="food-entry" role="button" tabindex="0" data-entry-id="${esc(e.id)}" aria-label="Edit ${esc(e.name)}, ${Math.round(e.cal)} kcal">
           <div class="food-entry-info">
-            <div class="food-entry-name">${e.fromPhoto ? icon('camera', 13) : ''}${esc(e.name)}</div>
+            <div class="food-entry-name">${e.fromPhoto ? icon('camera', 13) : ''}${fav ? `<span class="fav-mark">${icon('star', 12, true)}</span>` : ''}${esc(e.name)}</div>
             <div class="food-entry-serving">${esc(e.serving)}</div>
             <div class="food-entry-macros">
               <span class="mp">P ${Math.round(e.p)}g</span>
               <span class="mc">C ${Math.round(e.c)}g</span>
               <span class="mf">F ${Math.round(e.f)}g</span>
               ${glBadgeHTML(e)}
-              ${accPct ? `<span class="entry-accuracy entry-acc-${accCls}">~${accPct}%</span>` : ''}
+              ${acc ? `<span class="entry-accuracy entry-acc-${confClass(acc)}" title="Estimate confidence">~${acc}%</span>` : ''}
             </div>
           </div>
           <div class="food-entry-right">
             <div class="food-entry-cal">${Math.round(e.cal)}</div>
             <div class="food-entry-cal-sub">kcal</div>
           </div>
-          <div class="entry-actions">
-            <button class="entry-action-btn" onclick="openEditModal('${e.id}')" title="Edit" aria-label="Edit ${esc(e.name)}">${icon('pencil', 16)}</button>
-            <button class="entry-action-btn${isFav ? ' is-fav' : ''}" onclick="toggleFavourite('${e.id}')" title="${isFav ? 'Remove favourite' : 'Save as favourite'}" aria-label="${isFav ? 'Remove favourite' : 'Save as favourite'}" aria-pressed="${isFav}">${icon('star', 16, isFav)}</button>
-            <button class="entry-action-btn" onclick="deleteEntry('${e.id}')" title="Delete" aria-label="Delete ${esc(e.name)}">${icon('x', 16)}</button>
-          </div>
+          <span class="food-entry-chev" aria-hidden="true">${icon('chevron-right', 16)}</span>
         </div>`;
       }).join('')}
     </div>
-  `).join('');
+  `).join('') + pendingHTML;
 }
 
 function fileToBase64(file) {
@@ -573,6 +632,55 @@ function esc(s) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+// The model's numbers are untrusted: strings concatenate and nulls NaN the totals.
+function entryFromAI(n, ts, fromPhoto = false) {
+  const num = v => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : NaN; };
+  const cal = num(n.calories), p = num(n.protein_g), c = num(n.carbs_g), f = num(n.fat_g);
+  if ([cal, p, c, f].some(Number.isNaN)) throw new Error('The AI returned incomplete numbers. Try again, or add more detail.');
+  const gi = clampGI(n.glycemic_index);
+  return {
+    id: `${ts}-${Math.random().toString(36).slice(2, 6)}`, ts,
+    name: String(n.name || 'Meal').slice(0, 120), serving: String(n.serving || '').slice(0, 120),
+    cal, p, c, f, gi, gl: computeGL(gi, c), conf: confPct(n.confidence), fromPhoto,
+  };
+}
+function addEntry(date, entry) {
+  const logs = getLogs();
+  (logs[date] = logs[date] || []).push(entry);
+  saveLogs(logs);
+}
+
+// ── Offline queue: text descriptions typed without a connection ──
+const getQueue = () => DB.get('cai_queue') || [];
+function enqueueLookup(desc) {
+  const q = getQueue();
+  q.push({ id: Date.now().toString(), desc, date: activeDay(), ts: tsForActiveDay() });
+  DB.set('cai_queue', q);
+}
+let queueRunning = false;
+async function processQueue() {
+  if (queueRunning || !navigator.onLine || !getQueue().length) return;
+  queueRunning = true;
+  try {
+    for (const item of getQueue()) {
+      try {
+        const n = await lookupNutrition(item.desc, getApiKey());
+        n.name = n.name || item.desc;
+        addEntry(item.date, entryFromAI(n, item.ts));
+        DB.set('cai_queue', getQueue().filter(q => q.id !== item.id));
+      } catch (e) {
+        if (e.network) break;   // still offline — try again on the next 'online'
+        DB.set('cai_queue', getQueue().filter(q => q.id !== item.id));
+        showToast(`Couldn’t look up “${item.desc}”: ${e.message}`);
+      }
+    }
+  } finally {
+    queueRunning = false;
+    updateTodayView();
+  }
+}
+window.addEventListener('online', processQueue);
 
 let addInFlight = false;
 async function addFood() {
@@ -618,40 +726,24 @@ async function addFood() {
       n = await lookupNutrition(desc, apiKey);
     }
 
-    // The model's numbers are untrusted: strings concatenate and nulls NaN the totals.
-    const num = v => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : NaN; };
-    n.calories = num(n.calories); n.protein_g = num(n.protein_g);
-    n.carbs_g = num(n.carbs_g); n.fat_g = num(n.fat_g);
-    if ([n.calories, n.protein_g, n.carbs_g, n.fat_g].some(Number.isNaN)) {
-      throw new Error('The AI returned incomplete numbers. Try again, or add more detail.');
-    }
-    n.name = String(n.name || desc || 'Meal').slice(0, 120);
-    n.serving = String(n.serving || '').slice(0, 120);
+    n.name = n.name || desc;
 
-    const logs = getLogs();
-    const d    = todayStr();
-    if (!logs[d]) logs[d] = [];
-    const gi = clampGI(n.glycemic_index);
-    logs[d].push({
-      id:        Date.now().toString(),
-      ts:        Date.now(),
-      name:      n.name,
-      serving:   n.serving,
-      cal:       n.calories,
-      p:         n.protein_g,
-      c:         n.carbs_g,
-      f:         n.fat_g,
-      gi,
-      gl:        computeGL(gi, n.carbs_g),
-      conf:      confPct(n.confidence),
-      fromPhoto: wasPhoto
-    });
-    saveLogs(logs);
+    addEntry(activeDay(), entryFromAI(n, tsForActiveDay(), wasPhoto));
     input.value = '';
     if (wasPhoto) { clearPendingPhoto(); showToast('Photo logged'); }
     updateTodayView();
   } catch (err) {
-    errEl.textContent = `Error: ${err.message}`;
+    // Offline with a text description: keep it and look it up later.
+    if (err.network && !wasPhoto && desc) {
+      enqueueLookup(desc);
+      input.value = '';
+      updateTodayView();
+      showToast('Offline. Saved, and will look it up when you’re back online.');
+      return;
+    }
+    errEl.textContent = err.network && wasPhoto
+      ? `${err.message} Photos need a connection. Try again, or tap “Enter manually”.`
+      : err.message;
     errEl.classList.remove('hidden');
   } finally {
     addInFlight = false;
@@ -668,7 +760,7 @@ function showAddError(msg) {
 
 function deleteEntry(id) {
   const logs = getLogs();
-  const d    = todayStr();
+  const d    = activeDay();
   if (logs[d]) {
     logs[d] = logs[d].filter(e => e.id !== id);
     tombstone(d, id);   // so a synced copy on another device/ARC can't resurrect it
@@ -677,47 +769,67 @@ function deleteEntry(id) {
   }
 }
 
-// ── EDIT MODAL ─────────────────────────────────────────────────
+// ── EDIT / ADD SHEET ───────────────────────────────────────────
+// One sheet for editing an entry (tap its row) and for manual entry.
 let editingId = null;
 
-function openEditModal(id) {
-  const logs    = getLogs();
-  const entries = logs[todayStr()] || [];
-  const entry   = entries.find(e => e.id === id);
-  if (!entry) return;
+function findEntry(id) { return (getLogs()[activeDay()] || []).find(e => e.id === id); }
 
-  editingId = id;
-  document.getElementById('edit-name').value    = entry.name;
-  document.getElementById('edit-serving').value = entry.serving;
-  document.getElementById('edit-cal').value     = entry.cal;
-  document.getElementById('edit-protein').value = entry.p;
-  document.getElementById('edit-carbs').value   = entry.c;
-  document.getElementById('edit-fat').value     = entry.f;
-  document.getElementById('edit-modal').classList.remove('hidden');
+function openEditModal(id) {
+  const entry = id ? findEntry(id) : null;
+  if (id && !entry) return;
+  editingId = id || null;
+  const v = entry || { name: '', serving: '', cal: '', p: '', c: '', f: '' };
+  document.getElementById('edit-title').textContent = entry ? 'Edit entry' : 'Add entry';
+  document.getElementById('edit-name').value    = v.name;
+  document.getElementById('edit-serving').value = v.serving;
+  document.getElementById('edit-cal').value     = v.cal;
+  document.getElementById('edit-protein').value = v.p;
+  document.getElementById('edit-carbs').value   = v.c;
+  document.getElementById('edit-fat').value     = v.f;
+  document.getElementById('edit-error').classList.add('hidden');
+  document.getElementById('edit-save-btn').textContent = entry ? 'Save changes' : 'Add entry';
+  document.getElementById('edit-entry-actions').classList.toggle('hidden', !entry);
+  if (entry) {
+    const fav = isFavEntry(entry);
+    document.getElementById('edit-fav-btn').innerHTML = `${icon('star', 16, fav)}${fav ? 'Remove from quick add' : 'Add to quick add'}`;
+  }
+  openSheet('edit-modal', entry ? null : 'edit-name');
 }
 
 function closeEditModal() {
   editingId = null;
-  document.getElementById('edit-modal').classList.add('hidden');
+  closeSheet('edit-modal');
 }
 
 function saveEdit() {
-  if (!editingId) return;
+  const val = id => document.getElementById(id).value;
+  const name = val('edit-name').trim();
+  const nums = ['edit-cal', 'edit-protein', 'edit-carbs', 'edit-fat'].map(id => val(id) === '' ? 0 : Number(val(id)));
+  const errEl = document.getElementById('edit-error');
+  if (!name || nums.some(x => !Number.isFinite(x) || x < 0) || !(nums[0] > 0)) {
+    errEl.textContent = 'Add a name and calories (numbers of 0 or more).';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  const [cal, p, c, f] = nums;
   const logs = getLogs();
-  const d    = todayStr();
-  const idx  = (logs[d] || []).findIndex(e => e.id === editingId);
+  const d    = activeDay();
+  if (!editingId) {
+    const ts = tsForActiveDay();
+    (logs[d] = logs[d] || []).push({ id: `${ts}-m`, ts, name, serving: val('edit-serving').trim(), cal, p, c, f, gi: 0, gl: 0, conf: null, upd: Date.now() });
+    saveLogs(logs);
+    closeEditModal();
+    updateTodayView();
+    showToast(`Added ${name}`);
+    return;
+  }
+  const idx = (logs[d] || []).findIndex(e => e.id === editingId);
   if (idx < 0) return;
-
-  const cal = parseFloat(document.getElementById('edit-cal').value)     || 0;
-  const p   = parseFloat(document.getElementById('edit-protein').value) || 0;
-  const c   = parseFloat(document.getElementById('edit-carbs').value)   || 0;
-  const f   = parseFloat(document.getElementById('edit-fat').value)     || 0;
-
   const gi = logs[d][idx].gi || 0;   // keep the food's GI; recompute load from edited carbs
   logs[d][idx] = {
     ...logs[d][idx],
-    name:    document.getElementById('edit-name').value.trim(),
-    serving: document.getElementById('edit-serving').value.trim(),
+    name, serving: val('edit-serving').trim(),
     cal, p, c, f,
     gi,
     gl:   computeGL(gi, c),
@@ -727,36 +839,67 @@ function saveEdit() {
   saveLogs(logs);
   closeEditModal();
   updateTodayView();
-  showToast('Entry updated!');
+  showToast('Entry updated');
 }
 
+// ── Accessible bottom sheets: focus in, Tab trapped, Escape closes ──
+let sheetReturnFocus = null;
+function openSheet(id, focusId) {
+  const el = document.getElementById(id);
+  sheetReturnFocus = document.activeElement;
+  el.classList.remove('hidden');
+  const target = (focusId && document.getElementById(focusId)) || el.querySelector('.modal-close');
+  setTimeout(() => target?.focus(), 50);
+}
+function closeSheet(id) {
+  document.getElementById(id).classList.add('hidden');
+  if (sheetReturnFocus && document.contains(sheetReturnFocus)) sheetReturnFocus.focus();
+  sheetReturnFocus = null;
+}
+document.addEventListener('keydown', e => {
+  const open = [...document.querySelectorAll('.modal-overlay')].find(m => !m.classList.contains('hidden'));
+  if (!open) return;
+  if (e.key === 'Escape') { open.id === 'gki-modal' ? closeGkiModal() : closeEditModal(); return; }
+  if (e.key !== 'Tab') return;
+  const f = [...open.querySelectorAll('button, input, select, [tabindex="0"]')].filter(x => !x.disabled && x.offsetParent);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+
 // ── FAVOURITES ─────────────────────────────────────────────────
+// A favourite is linked to entries by id: `favId` is the source entry's id, and
+// entries added from quick add carry `favRef`. Matching on name+kcal broke as
+// soon as an entry was edited (a second star added a duplicate).
+function favFor(entry, favs = getFavs()) {
+  return favs.find(f => f.favId === entry.id || (entry.favRef && f.favId === entry.favRef))
+    || favs.find(f => !f.favId && f.name === entry.name);
+}
+const isFavEntry = e => !!favFor(e);
+
 function toggleFavourite(entryId) {
-  const logs  = getLogs();
-  const entry = (logs[todayStr()] || []).find(e => e.id === entryId);
+  const entry = findEntry(entryId);
   if (!entry) return;
-
-  let favs = getFavs();
-  const existing = favs.findIndex(f => f.name === entry.name && f.cal === entry.cal);
-
-  if (existing >= 0) {
-    favs.splice(existing, 1);
-    showToast('Removed from favourites');
+  const favs = getFavs();
+  const existing = favFor(entry, favs);
+  if (existing) {
+    saveFavs(favs.filter(f => f !== existing));
+    showToast('Removed from quick add');
   } else {
-    favs.push({ favId: entry.id, name: entry.name, serving: entry.serving, cal: entry.cal, p: entry.p, c: entry.c, f: entry.f, gi: entry.gi || 0, gl: entryGL(entry) });
+    favs.push({ favId: entry.favRef || entry.id, name: entry.name, serving: entry.serving, cal: entry.cal, p: entry.p, c: entry.c, f: entry.f, gi: entry.gi || 0, gl: entryGL(entry) });
+    saveFavs(favs);
     showToast('Saved to quick add');
   }
-  saveFavs(favs);
   updateTodayView();
 }
 
 function quickAddFavourite(fav) {
-  const logs = getLogs();
-  const d    = todayStr();
-  if (!logs[d]) logs[d] = [];
-  logs[d].push({
-    id:      Date.now().toString(),
-    ts:      Date.now(),
+  const ts = tsForActiveDay();
+  addEntry(activeDay(), {
+    id:      `${ts}-q`,
+    ts,
+    favRef:  fav.favId,
     name:    fav.name,
     serving: fav.serving,
     cal:     fav.cal,
@@ -767,21 +910,24 @@ function quickAddFavourite(fav) {
     gl:      typeof fav.gl === 'number' ? fav.gl : computeGL(fav.gi || 0, fav.c),
     conf:    null
   });
-  saveLogs(logs);
   updateTodayView();
   showToast(`Added ${fav.name}`);
 }
 
+let favManage = false;
 function renderFavourites() {
   const favs    = getFavs();
   const section = document.getElementById('fav-section');
   const chips   = document.getElementById('fav-chips');
 
-  if (!favs.length) { section.classList.add('hidden'); return; }
+  if (!favs.length) { favManage = false; section.classList.add('hidden'); return; }
   section.classList.remove('hidden');
+  document.getElementById('fav-manage-btn').textContent = favManage ? 'Done' : 'Edit';
+  chips.classList.toggle('managing', favManage);
 
   chips.innerHTML = favs.map((f, i) => `
-    <button type="button" class="fav-chip" data-fav-idx="${i}">
+    <button type="button" class="fav-chip" data-fav-idx="${i}" aria-label="${favManage ? `Remove ${esc(f.name)} from quick add` : `Add ${esc(f.name)}, ${Math.round(f.cal)} kcal`}">
+      ${favManage ? `<span class="fav-chip-x" aria-hidden="true">${icon('x', 12)}</span>` : ''}
       <div class="fav-chip-name">${esc(f.name)}</div>
       <div class="fav-chip-cal">${Math.round(f.cal)} kcal</div>
       <div class="fav-chip-macros">P${Math.round(f.p)} C${Math.round(f.c)} F${Math.round(f.f)}</div>
@@ -826,15 +972,36 @@ function renderStats() {
   document.getElementById('stat-tdee').textContent    = tdee.toLocaleString();
 
   const logs  = getLogs();
-  const days7 = last7().map(d => (logs[d] || []).reduce((s, e) => s + e.cal, 0)).filter(x => x > 0);
+  // Last 7 complete days — today is still in progress and would drag it down.
+  const days7 = last14().slice(6, 13).map(d => (logs[d] || []).reduce((s, e) => s + e.cal, 0)).filter(x => x > 0);
   const avg   = days7.length ? Math.round(days7.reduce((a, b) => a + b, 0) / days7.length) : 0;
   document.getElementById('stat-avg').textContent    = avg ? avg.toLocaleString() : '--';
   document.getElementById('stat-streak').textContent = calcStreak();
 
-  renderCalChart(logs, profile);
-  renderMacroChart(logs);
-  renderMetabolicStats();
-  renderWeightChartIn('chart-weight-stats', 'weightStats');
+  loadCharts().then(() => {
+    renderCalChart(logs, profile);
+    renderMacroChart(logs);
+    renderMetabolicStats();
+    renderWeightChartIn('chart-weight-stats', 'weightStats');
+  }).catch(() => showToast('Charts couldn’t load. Check your connection.'));
+}
+
+// Chart.js is only needed on Progress/Body, so it loads on first use (pinned,
+// with Subresource Integrity) instead of on every launch.
+const CHART_SRC = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js';
+const CHART_SRI = 'sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo';
+let chartPromise = null;
+function loadCharts() {
+  if (window.Chart) return Promise.resolve();
+  if (!chartPromise) {
+    chartPromise = new Promise((resolve, reject) => {
+      const s = Object.assign(document.createElement('script'), { src: CHART_SRC, integrity: CHART_SRI, crossOrigin: 'anonymous' });
+      s.onload = resolve;
+      s.onerror = () => { chartPromise = null; reject(new Error('Chart.js failed to load')); };
+      document.head.appendChild(s);
+    });
+  }
+  return chartPromise;
 }
 
 function renderCalChart(logs, profile) {
@@ -891,7 +1058,7 @@ function renderMacroChart(logs) {
     n++;
     entries.forEach(e => { p += e.p; c += e.c; f += e.f; });
   });
-  if (!n) return;
+  if (!n) { if (charts.macros) { charts.macros.destroy(); charts.macros = null; } return; }
 
   const ctx = document.getElementById('chart-macros').getContext('2d');
   if (charts.macros) charts.macros.destroy();
@@ -900,7 +1067,8 @@ function renderMacroChart(logs) {
     data: {
       labels: ['Protein', 'Carbs', 'Fat'],
       datasets: [{
-        data: [+(p/n).toFixed(1), +(c/n).toFixed(1), +(f/n).toFixed(1)],
+        // Share of calories (fat is 9 kcal/g), not grams — grams understate fat.
+        data: [Math.round(p * 4 / n), Math.round(c * 4 / n), Math.round(f * 9 / n)],
         backgroundColor: ['#9fb8cc', '#cfc07e', '#d49ab8'],
         borderWidth: 0
       }]
@@ -910,7 +1078,10 @@ function renderMacroChart(logs) {
       maintainAspectRatio: false,
       plugins: {
         legend: { position: 'right', labels: { font: { size: 11 }, padding: 10, color: '#979ca4' } },
-        tooltip: { callbacks: { label: c => `${c.label}: ${c.raw}g avg` } }
+        tooltip: { callbacks: { label: c => {
+          const tot = c.dataset.data.reduce((a, b) => a + b, 0) || 1;
+          return `${c.label}: ${c.raw} kcal/day (${Math.round(c.raw / tot * 100)}%)`;
+        } } }
       }
     }
   });
@@ -918,7 +1089,7 @@ function renderMacroChart(logs) {
 
 function renderWeightChartIn(canvasId, chartKey) {
   const weights = getWeights().slice(-60);
-  if (weights.length < 2) return;
+  if (weights.length < 2) { if (charts[chartKey]) { charts[chartKey].destroy(); charts[chartKey] = null; } return; }
   const ctx = document.getElementById(canvasId)?.getContext('2d');
   if (!ctx) return;
   if (charts[chartKey]) charts[chartKey].destroy();
@@ -954,7 +1125,7 @@ function renderWeightChartIn(canvasId, chartKey) {
 // ── WEIGHT VIEW ────────────────────────────────────────────────
 function renderWeightView() {
   renderWeightHistory();
-  renderWeightChartIn('chart-weight', 'weight');
+  loadCharts().then(() => renderWeightChartIn('chart-weight', 'weight')).catch(() => {});
 }
 
 function logWeight() {
@@ -1039,20 +1210,42 @@ function updateMacroCalPreview() {
   const f = parseInt(document.getElementById('p-macro-fat').value)     || 0;
   const kcal = p * 4 + c * 4 + f * 9;
   document.getElementById('macro-cal-preview').textContent = kcal ? `${kcal.toLocaleString()} kcal` : '--';
+  const prof = getProfile();
+  const gap = prof && kcal ? kcal - goalCals(prof) : 0;
+  const note = document.getElementById('macro-goal-note');
+  note.textContent = !prof || !kcal ? '' : Math.abs(gap) < 25 ? 'Matches your daily goal.'
+    : `${Math.abs(gap).toLocaleString()} kcal ${gap > 0 ? 'above' : 'below'} your ${goalCals(prof).toLocaleString()} kcal goal.`;
+  document.getElementById('macro-fit-btn').classList.toggle('hidden', !prof || !kcal || Math.abs(gap) < 25);
+}
+
+// Keep protein and fat, fill the rest of the calorie goal with carbs.
+function fitMacrosToGoal() {
+  const prof = getProfile(); if (!prof) return;
+  const p = parseInt(document.getElementById('p-macro-protein').value) || 0;
+  const f = parseInt(document.getElementById('p-macro-fat').value) || 0;
+  document.getElementById('p-macro-carbs').value = Math.max(0, Math.round((goalCals(prof) - p * 4 - f * 9) / 4));
+  updateMacroCalPreview();
 }
 
 function saveProfileFromForm() {
-  const p = getProfile() || {};
-  p.name       = document.getElementById('p-name').value.trim();
-  p.age        = parseInt(document.getElementById('p-age').value);
-  p.sex        = document.getElementById('p-sex').value;
-  p.height     = parseFloat(document.getElementById('p-height').value);
-  p.weight     = parseFloat(document.getElementById('p-weight').value);
-  p.activity   = document.getElementById('p-activity').value;
-  p.goalType   = 'custom';
-  p.customGoal = parseInt(document.getElementById('p-goal').value);
+  const old = getProfile() || {};
+  const v = id => document.getElementById(id).value;
+  const age = parseInt(v('p-age')), height = parseFloat(v('p-height')), weight = parseFloat(v('p-weight'));
+  const goalIn = parseInt(v('p-goal'));
+  const bad = !v('p-name').trim() ? 'Enter your name.'
+    : !(age >= 10 && age <= 120) ? 'Enter an age from 10 to 120.'
+    : !(height >= 100 && height <= 260) ? 'Enter a height from 100 to 260 cm.'
+    : !(weight >= 20 && weight <= 500) ? 'Enter a weight from 20 to 500 kg.'
+    : !(goalIn >= 800 && goalIn <= 10000) ? 'Enter a daily goal from 800 to 10,000 kcal.' : '';
+  if (bad) { showToast(bad); return; }
+
+  const p = { ...old, name: v('p-name').trim(), age, sex: v('p-sex'), height, weight, activity: v('p-activity') };
+  // Only a goal you typed becomes a fixed custom goal. Otherwise keep the goal
+  // type (maintain/cut/bulk) so it keeps following weight and activity.
+  if (goalIn !== goalCals(old)) { p.goalType = 'custom'; p.customGoal = goalIn; }
   saveProfile(p);
-  showToast('Profile saved!');
+  renderProfileView();
+  showToast('Profile saved');
   updateTodayView();
 }
 
@@ -1119,6 +1312,8 @@ function launchApp() {
 function showToast(msg) {
   const t = document.createElement('div');
   t.className = 'toast';
+  t.setAttribute('role', 'status');
+  t.setAttribute('aria-live', 'polite');
   t.textContent = msg;
   document.body.appendChild(t);
   requestAnimationFrame(() => {
@@ -1137,8 +1332,11 @@ function initEvents() {
   document.getElementById('add-btn').addEventListener('click', addFood);
   document.getElementById('fav-chips').addEventListener('click', e => {
     const chip = e.target.closest('[data-fav-idx]');
-    const fav = chip && getFavs()[+chip.dataset.favIdx];
-    if (fav) quickAddFavourite(fav);
+    const favs = getFavs();
+    const fav = chip && favs[+chip.dataset.favIdx];
+    if (!fav) return;
+    if (favManage) { saveFavs(favs.filter(f => f !== fav)); renderFavourites(); showToast(`Removed ${fav.name}`); }
+    else quickAddFavourite(fav);
   });
   document.getElementById('food-input').addEventListener('keypress', e => {
     if (e.key === 'Enter') addFood();
@@ -1171,10 +1369,33 @@ function initEvents() {
   });
   document.getElementById('edit-save-btn').addEventListener('click', saveEdit);
 
-  // Manage favourites (long list: just clear all for now)
+  // Quick add: Edit toggles per-chip removal
   document.getElementById('fav-manage-btn').addEventListener('click', () => {
-    if (confirm('Clear all favourites?')) { saveFavs([]); renderFavourites(); }
+    favManage = !favManage;
+    renderFavourites();
   });
+
+  // Food log: tap (or Enter/Space on) a row to open its edit sheet
+  const logEl = document.getElementById('food-log');
+  logEl.addEventListener('click', e => {
+    const row = e.target.closest('[data-entry-id]');
+    if (row) openEditModal(row.dataset.entryId);
+  });
+  logEl.addEventListener('keydown', e => {
+    const row = e.target.closest('[data-entry-id]');
+    if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openEditModal(row.dataset.entryId); }
+  });
+  document.getElementById('edit-fav-btn').addEventListener('click', () => {
+    const id = editingId; closeEditModal(); toggleFavourite(id);
+  });
+  document.getElementById('edit-delete-btn').addEventListener('click', () => {
+    const id = editingId, e = findEntry(id);
+    closeEditModal();
+    if (e) { deleteEntry(id); showToast(`Deleted ${e.name}`); }
+  });
+  document.getElementById('manual-add-btn').addEventListener('click', () => openEditModal(null));
+  document.getElementById('day-prev').addEventListener('click', () => shiftViewDay(-1));
+  document.getElementById('day-next').addEventListener('click', () => shiftViewDay(1));
 
   // Metabolic — GKI blood-reading modal
   document.getElementById('log-gki-btn').addEventListener('click', openGkiModal);
@@ -1206,6 +1427,8 @@ function initEvents() {
     showToast('Macro targets saved!');
     updateTodayView();
   });
+
+  document.getElementById('macro-fit-btn').addEventListener('click', fitMacrosToGoal);
 
   // Live kcal preview as user types macro targets
   ['p-macro-protein','p-macro-carbs','p-macro-fat'].forEach(id => {
@@ -1299,16 +1522,23 @@ function initEvents() {
     }
   });
 
-  document.getElementById('export-btn').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({
-      profile: getProfile(), logs: getLogs(), weights: getWeights(), gki: getGki()
-    }, null, 2)], { type: 'application/json' });
-    const a = Object.assign(document.createElement('a'), {
-      href: URL.createObjectURL(blob),
-      download: `calorieai-${todayStr()}.json`
-    });
+  document.getElementById('export-btn').addEventListener('click', async () => {
+    const data = {
+      app: 'arc-fuel', exported: new Date().toISOString(),
+      profile: getProfile(), logs: getLogs(), weights: getWeights(), favs: getFavs(), gki: getGki()
+    };
+    const name = `arc-fuel-${todayStr()}.json`;
+    const file = new File([JSON.stringify(data, null, 2)], name, { type: 'application/json' });
+    // iOS home-screen apps ignore <a download>; the share sheet can save to Files.
+    if (navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'ARC Fuel export' }); return; }
+      catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(file), download: name });
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(a.href);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);   // revoking at once can cancel the download
   });
 
   document.getElementById('clear-btn').addEventListener('click', () => {
@@ -1324,6 +1554,7 @@ var lastShownDay = null;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !getProfile()) return;
   if (lastShownDay !== todayStr()) updateTodayView();
+  processQueue();
   if (cloudEnabled()) syncOnLaunch().then(changed => { if (changed) { updateTodayView(); renderProfileView(); } });
   arcSync().then(changed => { if (changed) refreshAfterArcSync(); renderTrainTile(); });
 });
@@ -1333,6 +1564,7 @@ function init() {
   initEvents();
   initArcSync();
   lastShownDay = todayStr();
+  setTimeout(processQueue, 1500);
   if (getProfile()) {
     launchApp();
     // Background sync: pull newer data from other devices, then refresh

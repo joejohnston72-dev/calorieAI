@@ -1,4 +1,4 @@
-const CACHE = 'calorieai-v14';
+const CACHE = 'calorieai-v15';
 // Relative paths so the app works whether it's served from the domain root
 // or from a project subpath (e.g. GitHub Pages at /calorieAI/).
 const ASSETS = [
@@ -8,17 +8,20 @@ const ASSETS = [
   './app.js',
   './metabolic.js',
   './arcsync.js',
+  './boot.js',
   './cloud.js',
   './manifest.json',
   './icon.svg',
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',
-  'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
 ];
+// Best-effort: a CDN hiccup must not fail the whole install.
+const OPTIONAL = ['https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).then(() =>
+    Promise.all(OPTIONAL.map(u => c.add(new Request(u, { mode: 'cors' })).catch(() => {}))))));
   self.skipWaiting();
 });
 
