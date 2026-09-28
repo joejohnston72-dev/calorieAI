@@ -174,6 +174,7 @@ function renderArcAccount() {
         <div class="arc-sync-status sync-status" aria-live="polite"></div>`;
     }
   });
+  if (typeof checkStaleInstall === 'function') checkStaleInstall();   // backup wording depends on sign-in
   const acctNote = document.getElementById('api-key-optional');
   if (acctNote) acctNote.classList.toggle('hidden', !arcUser);
 }

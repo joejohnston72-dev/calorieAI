@@ -1,4 +1,4 @@
-const CACHE = 'calorieai-v15';
+const CACHE = 'calorieai-v16';
 // Relative paths so the app works whether it's served from the domain root
 // or from a project subpath (e.g. GitHub Pages at /calorieAI/).
 const ASSETS = [

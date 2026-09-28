@@ -1559,10 +1559,40 @@ document.addEventListener('visibilitychange', () => {
   arcSync().then(changed => { if (changed) refreshAfterArcSync(); renderTrainTile(); });
 });
 
+// iOS stores the status-bar style when the app is ADDED to the Home Screen. An
+// install from before the switch to `black` still runs `black-translucent`,
+// whose layout viewport is short by the top safe area — so the tab bar floats
+// ~59pt above the bottom edge. Under `black`, env(safe-area-inset-top) is 0, so
+// a non-zero inset in standalone mode means a stale install (same check as ARC).
+// It can't be fixed in CSS (the offset flips between two states); re-adding is
+// the fix, and removing the app wipes its storage, so back up first.
+function checkStaleInstall() {
+  const standalone = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  const el = document.getElementById('stale-install');
+  if (!standalone || !el) return;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;top:0;left:0;width:0;visibility:hidden;padding-top:env(safe-area-inset-top)';
+  document.body.appendChild(probe);
+  const inset = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+  probe.remove();
+  if (inset < 20) { el.classList.add('hidden'); return; }
+  const safe = !!arcUser;
+  el.innerHTML = `
+    <div class="si-head">Re-add ARC Fuel to finish an update</div>
+    <div class="si-body">iOS is still using this install's old screen setting, which leaves a gap under the tab bar.
+      ${safe
+        ? `Your log is synced to your ARC account (${esc(arcUser.email || '')}), so it's safe: remove ARC Fuel from your Home Screen, then in Safari tap Share → <b>Add to Home Screen</b> and sign in again.`
+        : `<b>Back up first:</b> removing the app deletes its data. Sign in under Profile → ARC account and wait for “Synced”, then remove ARC Fuel from your Home Screen and re-add it from Safari (Share → <b>Add to Home Screen</b>).`}
+    </div>`;
+  el.classList.remove('hidden');
+}
+
 function init() {
   initSetup();
   initEvents();
   initArcSync();
+  checkStaleInstall();
+  window.addEventListener('arc-auth', () => setTimeout(checkStaleInstall, 500));
   lastShownDay = todayStr();
   setTimeout(processQueue, 1500);
   if (getProfile()) {

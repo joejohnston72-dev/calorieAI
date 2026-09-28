@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.anthropic.com https://api.github.com https://gist.githubusercontent.com https://xjcnkivlkfzdycbyxxlx.supabase.co wss://xjcnkivlkfzdycbyxxlx.supabase.co https://cdn.jsdelivr.net; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'">
   <title>ARC Fuel</title>
   <link rel="manifest" href="manifest.json">
@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=15">
+  <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
 <div id="app">
@@ -123,6 +123,7 @@
 
       <!-- TODAY -->
       <div id="view-today" class="view active">
+        <div id="stale-install" class="stale-install hidden" role="status"></div>
 
         <!-- Priority rings: Calories + Protein large, Carbs + Fat smaller -->
         <section class="rings-card fuel-hero" aria-label="Today's fuel">
@@ -555,10 +556,10 @@
   </div>
 </div><!-- /app -->
 
-<script src="boot.js?v=15"></script>
-<script type="module" src="cloud.js?v=15"></script>
-<script src="metabolic.js?v=15"></script>
-<script src="arcsync.js?v=15"></script>
-<script src="app.js?v=15"></script>
+<script src="boot.js?v=16"></script>
+<script type="module" src="cloud.js?v=16"></script>
+<script src="metabolic.js?v=16"></script>
+<script src="arcsync.js?v=16"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>
