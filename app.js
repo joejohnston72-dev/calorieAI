@@ -14,18 +14,18 @@ const K = {
 
 // touchMeta + scheduleBackup are defined later (function declarations, hoisted).
 // Each save bumps a lastModified timestamp and queues a cloud backup.
-function afterSave() { touchMeta(); scheduleBackup(); }
+function afterSave() { touchMeta(); scheduleBackup(); scheduleArcPush(); }
 
 const getLogs    = ()    => DB.get(K.LOGS)    || {};
 const saveLogs   = v     => { DB.set(K.LOGS, v);     afterSave(); };
 const getWeights = ()    => DB.get(K.WEIGHTS) || [];
 const saveWeights= v     => { DB.set(K.WEIGHTS, v);  afterSave(); };
 const getProfile = ()    => DB.get(K.PROFILE);
-const saveProfile= v     => { DB.set(K.PROFILE, v);  afterSave(); };
+const saveProfile= v     => { DB.set(K.PROFILE, v);  stampKey('profile'); afterSave(); };
 const getApiKey  = ()    => DB.get(K.API) || '';
 const saveApiKey = v     => DB.set(K.API, v); // API key is device-local, not backed up
 const getFavs    = ()    => DB.get('cai_favs') || [];
-const saveFavs   = v     => { DB.set('cai_favs', v); afterSave(); };
+const saveFavs   = v     => { DB.set('cai_favs', v); stampKey('favs'); afterSave(); };
 
 // ── CLOUD BACKUP (GitHub Gist) ─────────────────────────────────
 const GIST_FILENAME = 'calorieai-backup.json';
@@ -236,7 +236,23 @@ function goalCals(p) {
 }
 
 // ── CLAUDE API ─────────────────────────────────────────────────
-async function callClaude(messages, apiKey, maxTokens = 300) {
+// Prefer ARC's Edge Function proxy (server-side key) when signed in; fall back to
+// this device's own key.
+async function callClaude(messages, apiKey, maxTokens = 600) {
+  const body = { model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages };
+  let proxyErr = null;
+  if (arcUser) {
+    const api = await arcApi(4000);
+    if (api) {
+      try { return parseAIJson(await api.ai(body)); }
+      catch (e) { proxyErr = e; }
+    }
+  }
+  if (!apiKey) {
+    throw new Error(proxyErr
+      ? `ARC's AI service didn't answer (${proxyErr.message}). Add your own API key in Profile to keep logging.`
+      : 'Sign in to your ARC account or add an API key in Profile.');
+  }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -245,18 +261,18 @@ async function callClaude(messages, apiKey, maxTokens = 300) {
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true'
     },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: maxTokens,
-      messages
-    })
+    body: JSON.stringify(body)
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `API error ${res.status}`);
   }
   const data = await res.json();
-  const text = data.content[0].text.trim();
+  return parseAIJson(data.content?.[0]?.text || '');
+}
+
+function parseAIJson(raw) {
+  const text = String(raw).trim();
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Unexpected AI response');
   return JSON.parse(match[0]);
@@ -317,7 +333,7 @@ Respond with ONLY this JSON (no other text):
       { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
       { type: 'text', text: prompt }
     ]
-  }], apiKey, 400);
+  }], apiKey, 900);
 }
 
 // ── NAV ────────────────────────────────────────────────────────
@@ -558,8 +574,8 @@ async function addFood() {
   if (!desc && !pendingPhoto) return;
 
   const apiKey = getApiKey();
-  if (!apiKey) {
-    showAddError('No API key — go to Profile to add one.');
+  if (!apiKey && !arcUser) {
+    showAddError('Sign in to your ARC account or add an API key in Profile.');
     return;
   }
 
@@ -645,6 +661,7 @@ function deleteEntry(id) {
   const d    = todayStr();
   if (logs[d]) {
     logs[d] = logs[d].filter(e => e.id !== id);
+    tombstone(d, id);   // so a synced copy on another device/ARC can't resurrect it
     saveLogs(logs);
     updateTodayView();
   }
@@ -694,7 +711,8 @@ function saveEdit() {
     cal, p, c, f,
     gi,
     gl:   computeGL(gi, c),
-    conf: null // manually edited — no confidence score
+    conf: null, // manually edited — no confidence score
+    upd:  Date.now()   // newest edit wins in the ARC sync merge
   };
   saveLogs(logs);
   closeEditModal();
@@ -944,7 +962,7 @@ function logWeight() {
   const weights = getWeights();
   const d = todayStr();
   const i = weights.findIndex(w => w.date === d);
-  if (i >= 0) weights[i].kg = kg; else weights.push({ date: d, kg });
+  if (i >= 0) { weights[i].kg = kg; weights[i].upd = Date.now(); } else weights.push({ date: d, kg, upd: Date.now() });
   weights.sort((a, b) => a.date.localeCompare(b.date));
   saveWeights(weights);
 
@@ -1056,7 +1074,8 @@ function handleSetup() {
 
   const fail = msg => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
 
-  if (!apiKey.startsWith('sk-'))       return fail('Enter a valid Anthropic API key (starts with sk-)');
+  if (!arcUser && !apiKey.startsWith('sk-')) return fail('Sign in to your ARC account above, or enter an Anthropic API key (starts with sk-)');
+  if (apiKey && !apiKey.startsWith('sk-'))    return fail('That API key doesn’t look right (it starts with sk-)');
   if (!name)                           return fail('Please enter your name');
   if (!age || age < 10 || age > 120)   return fail('Enter a valid age');
   if (!height || height < 100 || height > 260) return fail('Enter a valid height in cm');
@@ -1069,7 +1088,7 @@ function handleSetup() {
       return fail('Enter a valid calorie goal (500–10000)');
   }
 
-  saveApiKey(apiKey);
+  if (apiKey) saveApiKey(apiKey);
   saveProfile({ name, age, sex, height, weight, activity, goalType: setupGoalType, customGoal });
 
   const weights = getWeights();
@@ -1283,7 +1302,7 @@ function initEvents() {
   });
 
   document.getElementById('clear-btn').addEventListener('click', () => {
-    if (confirm('Delete all data? This cannot be undone.')) {
+    if (confirm(arcUser ? 'Delete all data on this device? Your ARC cloud copy is kept and will restore on next sync — sign out first to keep this device empty.' : 'Delete all data? This cannot be undone.')) {
       // Same origin as ARC (joejohnston72-dev.github.io) — never localStorage.clear().
       Object.keys(localStorage).filter(k => k.startsWith('cai_')).forEach(k => localStorage.removeItem(k));
       location.reload();
@@ -1296,11 +1315,13 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !getProfile()) return;
   if (lastShownDay !== todayStr()) updateTodayView();
   if (cloudEnabled()) syncOnLaunch().then(changed => { if (changed) { updateTodayView(); renderProfileView(); } });
+  arcSync().then(changed => { if (changed) refreshAfterArcSync(); });
 });
 
 function init() {
   initSetup();
   initEvents();
+  initArcSync();
   lastShownDay = todayStr();
   if (getProfile()) {
     launchApp();

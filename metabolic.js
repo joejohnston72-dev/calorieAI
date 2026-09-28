@@ -121,16 +121,19 @@ function renderMetabolicToday(entries) {
   const gki = measured != null ? measured : estimateGKIForDay(entries, Date.now());
   const z = gkiZone(gki);
   const gkiValEl = document.getElementById('metab-gki-val');
-  gkiValEl.textContent = fmtGKI(gki);
-  gkiValEl.className = `metab-value gki-text-${z.cls}`;
-  document.getElementById('metab-gki-zone').textContent = z.label;
+  // An estimate is a heuristic, so it is shown as a zone only — never as an
+  // exact-looking number. Only a blood reading gets a GKI value.
+  const isEst = measured == null && gki != null;
+  gkiValEl.textContent = isEst ? z.label : fmtGKI(gki);
+  gkiValEl.className = `metab-value gki-text-${z.cls}${isEst ? ' metab-value-zone' : ''}`;
+  document.getElementById('metab-gki-zone').textContent = isEst ? 'likely zone' : z.label;
   document.getElementById('metab-gki-src').textContent = measured != null ? 'measured' : gki == null ? '' : 'estimated';
   document.getElementById('metab-gki-src').className =
     `metab-src ${measured != null ? 'src-measured' : 'src-estimated'}`;
 
   document.getElementById('metab-hint').textContent = measured != null
     ? 'GKI from your latest blood reading today.'
-    : 'GKI estimated from today’s carbs & time since eating — log a blood reading for a true value.';
+    : 'Zone estimated from today’s carbs and time since eating. Log a blood reading for your actual GKI.';
 }
 
 // ── Log-reading modal ─────────────────────────────────────────────
@@ -175,17 +178,8 @@ function renderMetabolicStats() {
     return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   });
 
-  // GKI series — measured where available, else estimated.
-  const measured = [], estimated = [];
-  days.forEach(d => {
-    const m = measuredGKIForDate(d);
-    if (m != null) { measured.push(+m.toFixed(1)); estimated.push(null); return; }
-    const entries = logs[d] || [];
-    if (!entries.length) { measured.push(null); estimated.push(null); return; }
-    const lastTs = Math.max(...entries.map(e => e.ts || 0));
-    estimated.push(+estimateGKIForDay(entries, lastTs + 3 * 3600000).toFixed(1));
-    measured.push(null);
-  });
+  // GKI series — blood readings only (estimates are zone-only, see Today card).
+  const measured = days.map(d => { const m = measuredGKIForDate(d); return m != null ? +m.toFixed(1) : null; });
 
   const gkiCtx = document.getElementById('chart-gki')?.getContext('2d');
   if (gkiCtx) {
@@ -197,14 +191,11 @@ function renderMetabolicStats() {
           { type: 'line', label: 'Measured', data: measured, borderColor: '#8fc2bb',
             backgroundColor: '#8fc2bb', borderWidth: 2, pointRadius: 4, pointStyle: 'circle',
             spanGaps: true, tension: 0.3 },
-          { type: 'line', label: 'Estimated', data: estimated, borderColor: '#979ca4',
-            backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [4, 3],
-            pointRadius: 3, pointStyle: 'circle', spanGaps: true, tension: 0.3 },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: true, labels: { font: { size: 10 }, color: '#979ca4', boxWidth: 12 } },
+        plugins: { legend: { display: false, labels: { font: { size: 10 }, color: '#979ca4', boxWidth: 12 } },
           tooltip: { callbacks: { label: c => c.raw == null ? '' : `GKI ${c.raw} — ${gkiZone(c.raw).label}` } } },
         scales: {
           x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },

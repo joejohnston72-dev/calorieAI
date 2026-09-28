@@ -1,7 +1,7 @@
 {
-  "name": "CalorieAI",
-  "short_name": "CalorieAI",
-  "description": "AI calorie and macro tracking — the Fuel pillar of ARC",
+  "name": "ARC Fuel",
+  "short_name": "ARC Fuel",
+  "description": "Calorie and macro tracking \u2014 the Fuel pillar of ARC",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,8 +9,23 @@
   "theme_color": "#131518",
   "orientation": "portrait",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }

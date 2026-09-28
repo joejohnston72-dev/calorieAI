@@ -1,4 +1,4 @@
-# CalorieAI — Project Context
+# ARC Fuel (formerly CalorieAI) — Project Context
 
 ## Overview
 **CalorieAI** is an AI-powered daily calorie and macro tracker, built as an installable Progressive Web App (PWA) for use on the owner's (Joe) iPhone via "Add to Home Screen". Users log food in natural language (or by photo) and Claude returns calories + macros. Built for someone doing a **body recomposition** (high-protein focus).
@@ -71,3 +71,16 @@
 - **Live and fully working** with all features deployed, including Cloud Backup.
 - Joe was given instructions to set up Cloud Backup (create a `gist`-scope token at github.com/settings/tokens → Profile → Cloud Backup → Connect).
 - No outstanding bugs.
+
+## ARC integration (Sep 2026)
+- **Renamed "ARC Fuel"** (title, manifest, apple-mobile-web-app-title). Repo/URL/localStorage keys unchanged (`/calorieAI/`, `cai_*`).
+- **Design:** ARC Slate & Mist tokens (arc/BRANDING.md §5) — Fuel pillar = sand hero, mist-blue primary, Google Sans 400/500/700, Lucide icons, status bar `black`.
+- **ARC account sync** (`cloud.js` module + `arcsync.js` classic): same Supabase project/email-OTP auth/`entries` table as ARC. Store `calories`:
+  - `YYYY-MM-DD` → `{app, kcal, protein, carbs, fat, goal, proteinGoal, entries, deleted}` — ARC's `getNutritionToday()` reads kcal/goal/protein from this.
+  - `cai:profile`/`cai:favs` → `{data, t}` (newest stamp wins, stamps in `cai_stamps`); `cai:weights` (merge by date, `upd` wins); `cai:gki` (union by id).
+  - Merge per entry id (newest `upd||ts`), deletes are per-day tombstones (`cai_deleted`). Full sync (launch, resume, online, "Sync now") = pull → merge → push rows whose value differs from the cloud, which heals ARC re-uploading an older row. Debounced push after each save (`scheduleArcPush`, hashes in `cai_pushed`).
+- **AI:** when signed in, calls go through ARC's `coach` Edge Function (server key, SSE); the device API key is a fallback only. Needs the function deployed with `ANTHROPIC_API_KEY`.
+- **GKI:** estimates show a zone only; numeric GKI only from blood readings (Stats chart = readings only).
+- Gist backup kept as "Legacy backup" for restoring old data.
+- **Known ARC-side issue:** arc `sw.js` activate deletes every cache that isn't its own (incl. `calorieai-*`) — needs a `startsWith('arc-')` filter. ARC's `getNutritionToday` uses the UTC date.
+- SW cache **v13**.

@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>CalorieAI</title>
+  <title>ARC Fuel</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#131518">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="CalorieAI">
+  <meta name="apple-mobile-web-app-title" content="ARC Fuel">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&display=swap">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 <div id="app">
@@ -24,14 +24,19 @@
     <div class="setup-scroll">
       <div class="setup-hero">
         <img class="app-icon" src="icon.svg" alt="" width="72" height="72">
-        <h1>CalorieAI</h1>
-        <p>Fuel, measured. Part of ARC.</p>
+        <h1>ARC Fuel</h1>
+        <p>Calories and macros, logged in a sentence.</p>
       </div>
 
       <div class="card">
-        <h2>Anthropic API Key</h2>
-        <p class="hint">Get yours free at console.anthropic.com — costs pennies/month</p>
-        <input type="password" id="api-key-input" class="input" placeholder="sk-ant-api03-...">
+        <h2>Sign in with ARC</h2>
+        <div data-arc-account="setup"></div>
+      </div>
+
+      <div class="card">
+        <h2>Anthropic API key <span id="api-key-optional" class="muted-text hidden" style="font-weight:400">— optional when signed in</span></h2>
+        <p class="hint">Only needed without an ARC account, or if ARC's AI service is down. Create one at console.anthropic.com.</p>
+        <input type="password" id="api-key-input" class="input" placeholder="sk-ant-api03-..." aria-label="Anthropic API key">
       </div>
 
       <div class="card">
@@ -90,8 +95,8 @@
       <div id="setup-error" class="error-msg hidden" style="padding:8px 0"></div>
 
       <div class="restore-link-wrap">
-        <span>Already have a cloud backup?</span>
-        <button id="setup-restore-btn" class="link-btn">Restore from cloud</button>
+        <span>Old GitHub Gist backup?</span>
+        <button id="setup-restore-btn" class="link-btn">Restore from Gist</button>
       </div>
 
       <!-- Restore panel (hidden until tapped) -->
@@ -309,7 +314,7 @@
         </div>
 
         <div class="chart-card card">
-          <h3>GKI — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">glucose ÷ ketones · lower = deeper ketosis</span></h3>
+          <h3>GKI — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">blood readings · lower = deeper ketosis</span></h3>
           <div class="chart-wrap"><canvas id="chart-gki"></canvas></div>
         </div>
 
@@ -419,14 +424,18 @@
         </div>
 
         <div class="card">
-          <h3>API Key</h3>
+          <h3>ARC account</h3>
+          <div data-arc-account="profile"></div>
+        </div>
+        <div class="card">
+          <h3>API key <span class="muted-text" style="font-weight:400;font-size:12px">— fallback if ARC's AI is unavailable</span></h3>
           <input type="password" id="p-api-key" class="input" placeholder="sk-ant-...">
           <button id="save-api-btn" class="btn-primary full-width" style="margin-top:10px">Update API key</button>
         </div>
 
         <div class="card">
-          <h3>Cloud backup</h3>
-          <p class="hint" style="margin-bottom:10px">Auto-saves your data to a private GitHub Gist so it survives reinstalls &amp; device changes.</p>
+          <h3>Legacy backup (GitHub Gist)</h3>
+          <p class="hint" style="margin-bottom:10px">Your ARC account now syncs everything. Keep this only to restore an old Gist backup; it can be disconnected once your data is in ARC.</p>
           <div class="field">
             <label>GitHub Token (gist scope)</label>
             <input type="password" id="p-gist-token" class="input" placeholder="github_pat_... or ghp_...">
@@ -532,7 +541,10 @@
 </div><!-- /app -->
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="metabolic.js?v=12"></script>
-<script src="app.js?v=12"></script>
+<script>window.arcReady = new Promise(r => { window.__arcResolve = r; });</script>
+<script type="module" src="cloud.js?v=13"></script>
+<script src="metabolic.js?v=13"></script>
+<script src="arcsync.js?v=13"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

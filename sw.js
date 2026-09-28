@@ -1,4 +1,4 @@
-const CACHE = 'calorieai-v12';
+const CACHE = 'calorieai-v13';
 // Relative paths so the app works whether it's served from the domain root
 // or from a project subpath (e.g. GitHub Pages at /calorieAI/).
 const ASSETS = [
@@ -7,6 +7,8 @@ const ASSETS = [
   './styles.css',
   './app.js',
   './metabolic.js',
+  './arcsync.js',
+  './cloud.js',
   './manifest.json',
   './icon.svg',
   './icon-180.png',
@@ -39,7 +41,9 @@ self.addEventListener('fetch', e => {
   // and GitHub pass straight through: they must fail honestly when offline and
   // their (private, token-authenticated) responses must never be cached.
   if (req.method !== 'GET') return;
-  const ours = url.origin === location.origin || url.href.startsWith('https://cdn.jsdelivr.net/npm/chart.js@');
+  // supabase-js is cached so the ARC session still loads on an offline launch.
+  const ours = url.origin === location.origin || url.href.startsWith('https://cdn.jsdelivr.net/npm/chart.js@')
+    || url.href.startsWith('https://cdn.jsdelivr.net/npm/@supabase/');
   if (!ours) return;
 
   // NETWORK-FIRST: always try to get the freshest version.
