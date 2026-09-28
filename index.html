@@ -3,14 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>CalorieAI</title>
+  <title>ARC Fuel</title>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#0f172a">
+  <meta name="theme-color" content="#131518">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="CalorieAI">
-  <link rel="apple-touch-icon" href="icon.svg">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="ARC Fuel">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Google+Sans:400,500,700&display=swap">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
 <div id="app">
@@ -19,15 +23,20 @@
   <div id="setup-screen" class="screen">
     <div class="setup-scroll">
       <div class="setup-hero">
-        <div class="app-icon">🥗</div>
-        <h1>CalorieAI</h1>
-        <p>AI-powered nutrition tracking</p>
+        <img class="app-icon" src="icon.svg" alt="" width="72" height="72">
+        <h1>ARC Fuel</h1>
+        <p>Calories and macros, logged in a sentence.</p>
       </div>
 
       <div class="card">
-        <h2>Anthropic API Key</h2>
-        <p class="hint">Get yours free at console.anthropic.com — costs pennies/month</p>
-        <input type="password" id="api-key-input" class="input" placeholder="sk-ant-api03-...">
+        <h2>Sign in with ARC</h2>
+        <div data-arc-account="setup"></div>
+      </div>
+
+      <div class="card">
+        <h2>Anthropic API key <span id="api-key-optional" class="muted-text hidden" style="font-weight:400">— optional when signed in</span></h2>
+        <p class="hint">Only needed without an ARC account, or if ARC's AI service is down. Create one at console.anthropic.com.</p>
+        <input type="password" id="api-key-input" class="input" placeholder="sk-ant-api03-..." aria-label="Anthropic API key">
       </div>
 
       <div class="card">
@@ -82,20 +91,20 @@
         <input type="number" id="s-custom-goal" class="input hidden" placeholder="e.g. 2000">
       </div>
 
-      <button id="setup-btn" class="btn-primary full-width">Get Started →</button>
+      <button id="setup-btn" class="btn-primary full-width">Get started</button>
       <div id="setup-error" class="error-msg hidden" style="padding:8px 0"></div>
 
       <div class="restore-link-wrap">
-        <span>Already have a cloud backup?</span>
-        <button id="setup-restore-btn" class="link-btn">Restore from cloud</button>
+        <span>Old GitHub Gist backup?</span>
+        <button id="setup-restore-btn" class="link-btn">Restore from Gist</button>
       </div>
 
       <!-- Restore panel (hidden until tapped) -->
       <div id="restore-panel" class="card hidden" style="margin-top:14px">
-        <h2>Restore Backup</h2>
+        <h2>Restore backup</h2>
         <p class="hint" style="margin-bottom:10px">Paste your GitHub token — we'll find your backup automatically.</p>
         <input type="password" id="restore-token" class="input" placeholder="github_pat_... or ghp_...">
-        <button id="restore-go-btn" class="btn-primary full-width" style="margin-top:10px">Find &amp; Restore</button>
+        <button id="restore-go-btn" class="btn-primary full-width" style="margin-top:10px">Find and restore</button>
         <div id="restore-status" class="sync-status" style="margin-top:8px"></div>
       </div>
     </div>
@@ -135,7 +144,7 @@
                   <div id="ring-cal-sub" class="ring-sub">-- left</div>
                 </div>
               </div>
-              <div class="ring-label-primary">Calories</div>
+              <div class="ring-label-primary ring-label-cal">Calories</div>
             </div>
 
             <!-- PROTEIN (priority #2) -->
@@ -218,15 +227,15 @@
               <div id="metab-gki-zone" class="metab-zone"></div>
             </div>
           </div>
-          <button id="log-gki-btn" class="btn-secondary full-width" style="margin-top:12px">🩸 Log blood reading (glucose + ketones)</button>
+          <button id="log-gki-btn" class="btn-secondary full-width" style="margin-top:12px"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>Log blood reading</button>
           <div id="metab-hint" class="hint" style="margin-top:8px"></div>
         </div>
 
         <div class="add-section">
           <div class="add-row">
-            <input type="text" id="food-input" class="input food-input"
+            <input type="text" id="food-input" class="input food-input" aria-label="Describe what you ate" enterkeyhint="done"
               placeholder="e.g. Weetabix 2 biscuits, Big Mac, chicken breast 150g...">
-            <label id="camera-btn" class="btn-camera" title="Take a photo">
+            <label id="camera-btn" class="btn-camera" title="Take a photo" aria-label="Log food from a photo">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
             </label>
@@ -236,10 +245,10 @@
           <div id="photo-preview-row" class="photo-preview-row hidden">
             <img id="photo-thumb" class="photo-thumb" src="" alt="food photo">
             <div class="photo-preview-info">
-              <span class="photo-preview-label">📷 Photo ready</span>
+              <span class="photo-preview-label">Photo ready</span>
               <span class="photo-preview-hint">Add text for extra context (optional)</span>
             </div>
-            <button id="photo-clear-btn" class="photo-clear-btn">×</button>
+            <button id="photo-clear-btn" class="photo-clear-btn" aria-label="Remove photo"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           </div>
           <div id="add-loading" class="loading-row hidden">
             <div class="spinner"></div>
@@ -251,7 +260,7 @@
         <!-- FAVOURITES -->
         <div id="fav-section" class="fav-section hidden">
           <div class="fav-header">
-            <span>⭐ Quick Add</span>
+            <span><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>Quick add</span>
             <button id="fav-manage-btn" class="fav-manage-btn">Manage</button>
           </div>
           <div id="fav-chips" class="fav-chips"></div>
@@ -305,7 +314,7 @@
         </div>
 
         <div class="chart-card card">
-          <h3>GKI — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">glucose ÷ ketones · lower = deeper ketosis</span></h3>
+          <h3>GKI — Last 14 Days <span class="muted-text" style="font-weight:400;font-size:11px">blood readings · lower = deeper ketosis</span></h3>
           <div class="chart-wrap"><canvas id="chart-gki"></canvas></div>
         </div>
 
@@ -385,7 +394,7 @@
             <label>Daily Calorie Goal</label>
             <input type="number" id="p-goal" class="input">
           </div>
-          <button id="save-profile-btn" class="btn-primary full-width">Save Profile</button>
+          <button id="save-profile-btn" class="btn-primary full-width">Save profile</button>
         </div>
 
         <div class="card">
@@ -411,32 +420,36 @@
               <div id="macro-cal-preview" class="macro-cal-val">--</div>
             </div>
           </div>
-          <button id="save-macros-btn" class="btn-primary full-width">Save Macro Targets</button>
+          <button id="save-macros-btn" class="btn-primary full-width">Save macro targets</button>
         </div>
 
         <div class="card">
-          <h3>API Key</h3>
+          <h3>ARC account</h3>
+          <div data-arc-account="profile"></div>
+        </div>
+        <div class="card">
+          <h3>API key <span class="muted-text" style="font-weight:400;font-size:12px">— fallback if ARC's AI is unavailable</span></h3>
           <input type="password" id="p-api-key" class="input" placeholder="sk-ant-...">
-          <button id="save-api-btn" class="btn-primary full-width" style="margin-top:10px">Update API Key</button>
+          <button id="save-api-btn" class="btn-primary full-width" style="margin-top:10px">Update API key</button>
         </div>
 
         <div class="card">
-          <h3>☁️ Cloud Backup</h3>
-          <p class="hint" style="margin-bottom:10px">Auto-saves your data to a private GitHub Gist so it survives reinstalls &amp; device changes.</p>
+          <h3>Legacy backup (GitHub Gist)</h3>
+          <p class="hint" style="margin-bottom:10px">Your ARC account now syncs everything. Keep this only to restore an old Gist backup; it can be disconnected once your data is in ARC.</p>
           <div class="field">
             <label>GitHub Token (gist scope)</label>
             <input type="password" id="p-gist-token" class="input" placeholder="github_pat_... or ghp_...">
           </div>
           <div id="sync-status" class="sync-status">Not connected</div>
-          <button id="gist-connect-btn" class="btn-primary full-width" style="margin-top:10px">Connect &amp; Back Up Now</button>
-          <button id="gist-restore-btn" class="btn-secondary full-width" style="margin-top:8px">Restore from Cloud</button>
+          <button id="gist-connect-btn" class="btn-primary full-width" style="margin-top:10px">Connect and back up now</button>
+          <button id="gist-restore-btn" class="btn-secondary full-width" style="margin-top:8px">Restore from cloud</button>
           <button id="gist-disconnect-btn" class="btn-danger full-width hidden" style="margin-top:8px">Disconnect</button>
         </div>
 
         <div class="card">
           <h3>Data</h3>
-          <button id="export-btn" class="btn-secondary full-width">Export Data (JSON)</button>
-          <button id="clear-btn" class="btn-danger full-width" style="margin-top:8px">Clear All Data</button>
+          <button id="export-btn" class="btn-secondary full-width">Export data (JSON)</button>
+          <button id="clear-btn" class="btn-danger full-width" style="margin-top:8px">Clear all data</button>
         </div>
       </div>
 
@@ -467,8 +480,8 @@
   <div id="edit-modal" class="modal-overlay hidden">
     <div class="modal-sheet">
       <div class="modal-header">
-        <h3>Edit Entry</h3>
-        <button id="modal-close" class="modal-close">×</button>
+        <h3>Edit entry</h3>
+        <button id="modal-close" class="modal-close" aria-label="Close"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div class="field">
         <label>Name</label>
@@ -498,7 +511,7 @@
           <input type="number" id="edit-fat" class="input" step="0.1">
         </div>
       </div>
-      <button id="edit-save-btn" class="btn-primary full-width">Save Changes</button>
+      <button id="edit-save-btn" class="btn-primary full-width">Save changes</button>
     </div>
   </div>
 
@@ -506,8 +519,8 @@
   <div id="gki-modal" class="modal-overlay hidden">
     <div class="modal-sheet">
       <div class="modal-header">
-        <h3>Log Blood Reading</h3>
-        <button id="gki-close" class="modal-close">×</button>
+        <h3>Log blood reading</h3>
+        <button id="gki-close" class="modal-close" aria-label="Close"><svg class="lc" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <p class="hint" style="margin-bottom:12px">From a blood meter (e.g. Keto-Mojo). Both values in mmol/L. GKI = glucose ÷ ketones.</p>
       <div class="field-row">
@@ -521,14 +534,17 @@
         </div>
       </div>
       <div id="gki-preview" class="metab-zone" style="margin:4px 0 12px;min-height:1em"></div>
-      <button id="gki-save-btn" class="btn-primary full-width">Save Reading</button>
+      <button id="gki-save-btn" class="btn-primary full-width">Save reading</button>
       <div id="gki-error" class="error-msg hidden" style="margin-top:8px"></div>
     </div>
   </div>
 </div><!-- /app -->
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="metabolic.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script>window.arcReady = new Promise(r => { window.__arcResolve = r; });</script>
+<script type="module" src="cloud.js?v=13"></script>
+<script src="metabolic.js?v=13"></script>
+<script src="arcsync.js?v=13"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

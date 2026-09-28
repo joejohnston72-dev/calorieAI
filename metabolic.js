@@ -83,6 +83,7 @@ function estimateGKIRaw(carbs, hoursSinceLast) {
   return glu / ket;
 }
 function estimateGKIForDay(entries, refTs) {
+  if (!(entries || []).length) return null;   // nothing logged → no basis for an estimate
   const carbs = (entries || []).reduce((s, e) => s + (e.c || 0), 0);
   const lastTs = (entries || []).length ? Math.max(...entries.map(e => e.ts || 0)) : null;
   const hrs = lastTs ? Math.max(0, (refTs - lastTs) / 3600000) : 10;
@@ -120,16 +121,19 @@ function renderMetabolicToday(entries) {
   const gki = measured != null ? measured : estimateGKIForDay(entries, Date.now());
   const z = gkiZone(gki);
   const gkiValEl = document.getElementById('metab-gki-val');
-  gkiValEl.textContent = fmtGKI(gki);
-  gkiValEl.className = `metab-value gki-text-${z.cls}`;
-  document.getElementById('metab-gki-zone').textContent = z.label;
-  document.getElementById('metab-gki-src').textContent = measured != null ? 'measured' : 'estimated';
+  // An estimate is a heuristic, so it is shown as a zone only — never as an
+  // exact-looking number. Only a blood reading gets a GKI value.
+  const isEst = measured == null && gki != null;
+  gkiValEl.textContent = isEst ? z.label : fmtGKI(gki);
+  gkiValEl.className = `metab-value gki-text-${z.cls}${isEst ? ' metab-value-zone' : ''}`;
+  document.getElementById('metab-gki-zone').textContent = isEst ? 'likely zone' : z.label;
+  document.getElementById('metab-gki-src').textContent = measured != null ? 'measured' : gki == null ? '' : 'estimated';
   document.getElementById('metab-gki-src').className =
     `metab-src ${measured != null ? 'src-measured' : 'src-estimated'}`;
 
   document.getElementById('metab-hint').textContent = measured != null
     ? 'GKI from your latest blood reading today.'
-    : 'GKI estimated from today’s carbs & time since eating — log a blood reading for a true value.';
+    : 'Zone estimated from today’s carbs and time since eating. Log a blood reading for your actual GKI.';
 }
 
 // ── Log-reading modal ─────────────────────────────────────────────
@@ -156,12 +160,12 @@ function saveGkiReading() {
   const k = parseFloat(document.getElementById('gki-ketones').value);
   const err = document.getElementById('gki-error');
   if (!isFinite(g) || g <= 0 || g > 40)  { err.textContent = 'Enter a glucose value in mmol/L (e.g. 5.2).'; err.classList.remove('hidden'); return; }
-  if (!isFinite(k) || k < 0 || k > 10)   { err.textContent = 'Enter a ketone value in mmol/L (e.g. 1.5).'; err.classList.remove('hidden'); return; }
+  if (!isFinite(k) || k < 0.1 || k > 10) { err.textContent = 'Enter a ketone value from 0.1 to 10 mmol/L (meters read "LO" below 0.1).'; err.classList.remove('hidden'); return; }
   const list = getGki();
   list.push({ id: Date.now().toString(), date: todayStr(), ts: Date.now(), glucose: g, ketones: k });
   saveGki(list);
   closeGkiModal();
-  showToast('🩸 Blood reading logged');
+  showToast('Blood reading logged');
   updateTodayView();
 }
 
@@ -174,17 +178,8 @@ function renderMetabolicStats() {
     return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
   });
 
-  // GKI series — measured where available, else estimated.
-  const measured = [], estimated = [];
-  days.forEach(d => {
-    const m = measuredGKIForDate(d);
-    if (m != null) { measured.push(+m.toFixed(1)); estimated.push(null); return; }
-    const entries = logs[d] || [];
-    if (!entries.length) { measured.push(null); estimated.push(null); return; }
-    const lastTs = Math.max(...entries.map(e => e.ts || 0));
-    estimated.push(+estimateGKIForDay(entries, lastTs + 3 * 3600000).toFixed(1));
-    measured.push(null);
-  });
+  // GKI series — blood readings only (estimates are zone-only, see Today card).
+  const measured = days.map(d => { const m = measuredGKIForDate(d); return m != null ? +m.toFixed(1) : null; });
 
   const gkiCtx = document.getElementById('chart-gki')?.getContext('2d');
   if (gkiCtx) {
@@ -193,21 +188,18 @@ function renderMetabolicStats() {
       data: {
         labels,
         datasets: [
-          { type: 'line', label: 'Measured', data: measured, borderColor: '#a78bfa',
-            backgroundColor: '#a78bfa', borderWidth: 2, pointRadius: 4, pointStyle: 'circle',
+          { type: 'line', label: 'Measured', data: measured, borderColor: '#8fc2bb',
+            backgroundColor: '#8fc2bb', borderWidth: 2, pointRadius: 4, pointStyle: 'circle',
             spanGaps: true, tension: 0.3 },
-          { type: 'line', label: 'Estimated', data: estimated, borderColor: '#64748b',
-            backgroundColor: 'transparent', borderWidth: 1.5, borderDash: [4, 3],
-            pointRadius: 3, pointStyle: 'circle', spanGaps: true, tension: 0.3 },
         ],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: true, labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12 } },
+        plugins: { legend: { display: false, labels: { font: { size: 10 }, color: '#979ca4', boxWidth: 12 } },
           tooltip: { callbacks: { label: c => c.raw == null ? '' : `GKI ${c.raw} — ${gkiZone(c.raw).label}` } } },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-          y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' }, beginAtZero: true },
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+          y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' }, beginAtZero: true },
         },
       },
     });
@@ -224,7 +216,7 @@ function renderMetabolicStats() {
         labels,
         datasets: [{
           data: glData,
-          backgroundColor: glData.map(v => v === 0 ? '#334155' : v > 150 ? '#f87171' : v > 100 ? '#fbbf24' : '#4ade80'),
+          backgroundColor: glData.map(v => v === 0 ? '#262a2f' : v > 150 ? '#d88685' : v > 100 ? '#d8b774' : '#93c2a4'),
           borderRadius: 4,
         }],
       },
@@ -233,8 +225,8 @@ function renderMetabolicStats() {
         plugins: { legend: { display: false },
           tooltip: { callbacks: { label: c => `GL ${c.raw} — ${dailyGLZone(c.raw).label}` } } },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-          y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' }, beginAtZero: true },
+          x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+          y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' }, beginAtZero: true },
         },
       },
     });

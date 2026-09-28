@@ -14,18 +14,18 @@ const K = {
 
 // touchMeta + scheduleBackup are defined later (function declarations, hoisted).
 // Each save bumps a lastModified timestamp and queues a cloud backup.
-function afterSave() { touchMeta(); scheduleBackup(); }
+function afterSave() { touchMeta(); scheduleBackup(); scheduleArcPush(); }
 
 const getLogs    = ()    => DB.get(K.LOGS)    || {};
 const saveLogs   = v     => { DB.set(K.LOGS, v);     afterSave(); };
 const getWeights = ()    => DB.get(K.WEIGHTS) || [];
 const saveWeights= v     => { DB.set(K.WEIGHTS, v);  afterSave(); };
 const getProfile = ()    => DB.get(K.PROFILE);
-const saveProfile= v     => { DB.set(K.PROFILE, v);  afterSave(); };
+const saveProfile= v     => { DB.set(K.PROFILE, v);  stampKey('profile'); afterSave(); };
 const getApiKey  = ()    => DB.get(K.API) || '';
 const saveApiKey = v     => DB.set(K.API, v); // API key is device-local, not backed up
 const getFavs    = ()    => DB.get('cai_favs') || [];
-const saveFavs   = v     => { DB.set('cai_favs', v); afterSave(); };
+const saveFavs   = v     => { DB.set('cai_favs', v); stampKey('favs'); afterSave(); };
 
 // ── CLOUD BACKUP (GitHub Gist) ─────────────────────────────────
 const GIST_FILENAME = 'calorieai-backup.json';
@@ -173,6 +173,17 @@ async function syncOnLaunch() {
   return false;
 }
 
+// ── Lucide icons (vendored subset, https://lucide.dev · ISC) — shared ARC style
+const ICONS = {
+  camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+  pencil: '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/>',
+  star:   '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+  x:      '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+};
+function icon(name, size = 18, filled = false) {
+  return `<svg class="lc" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+}
+
 // confidence → percentage
 function confPct(conf) {
   if (conf === 'high')   return 95;
@@ -186,7 +197,9 @@ function confClass(pct) {
 }
 
 // ── DATE ───────────────────────────────────────────────────────
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Local calendar day (toISOString is UTC — logged into yesterday after midnight BST)
+const ymdLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const todayStr = () => ymdLocal(new Date());
 
 function fmtDate(s) {
   const d = new Date(s + 'T00:00:00');
@@ -223,7 +236,23 @@ function goalCals(p) {
 }
 
 // ── CLAUDE API ─────────────────────────────────────────────────
-async function callClaude(messages, apiKey, maxTokens = 300) {
+// Prefer ARC's Edge Function proxy (server-side key) when signed in; fall back to
+// this device's own key.
+async function callClaude(messages, apiKey, maxTokens = 600) {
+  const body = { model: 'claude-haiku-4-5-20251001', max_tokens: maxTokens, messages };
+  let proxyErr = null;
+  if (arcUser) {
+    const api = await arcApi(4000);
+    if (api) {
+      try { return parseAIJson(await api.ai(body)); }
+      catch (e) { proxyErr = e; }
+    }
+  }
+  if (!apiKey) {
+    throw new Error(proxyErr
+      ? `ARC's AI service didn't answer (${proxyErr.message}). Add your own API key in Profile to keep logging.`
+      : 'Sign in to your ARC account or add an API key in Profile.');
+  }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -232,18 +261,18 @@ async function callClaude(messages, apiKey, maxTokens = 300) {
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true'
     },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: maxTokens,
-      messages
-    })
+    body: JSON.stringify(body)
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `API error ${res.status}`);
   }
   const data = await res.json();
-  const text = data.content[0].text.trim();
+  return parseAIJson(data.content?.[0]?.text || '');
+}
+
+function parseAIJson(raw) {
+  const text = String(raw).trim();
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Unexpected AI response');
   return JSON.parse(match[0]);
@@ -304,7 +333,7 @@ Respond with ONLY this JSON (no other text):
       { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
       { type: 'text', text: prompt }
     ]
-  }], apiKey, 400);
+  }], apiKey, 900);
 }
 
 // ── NAV ────────────────────────────────────────────────────────
@@ -341,6 +370,7 @@ function navigate(view) {
 
 // ── TODAY VIEW ─────────────────────────────────────────────────
 function updateTodayView() {
+  lastShownDay = todayStr();
   const profile = getProfile();
   const logs    = getLogs();
   const entries = logs[todayStr()] || [];
@@ -371,7 +401,7 @@ function updateTodayView() {
   const calCirc = 351.86;
   setRing('ring-cal', tot.cal, goal, calCirc);
   document.getElementById('ring-cal').style.stroke =
-    tot.cal > goal * 1.05 ? '#ef4444' : '#22c55e';
+    tot.cal > goal * 1.05 ? '#d88685' : '#d6b48e';
   document.getElementById('ring-cal-val').textContent = Math.round(tot.cal);
   const calRem = goal - tot.cal;
   document.getElementById('ring-cal-sub').textContent =
@@ -406,7 +436,7 @@ function updateTodayView() {
   const projEl = document.getElementById('projection-display');
   if (entries.length > 0) {
     const projectedCal = entries.reduce((sum, e) => {
-      const bias = e.conf >= 90 ? 1.00 : e.conf >= 75 ? 1.10 : 1.18;
+      const bias = e.conf == null || e.conf >= 90 ? 1.00 : e.conf >= 75 ? 1.10 : 1.18;
       return sum + (e.cal * bias);
     }, 0);
     const diff     = Math.round(projectedCal - tot.cal);
@@ -416,13 +446,13 @@ function updateTodayView() {
     if (diff < 20) {
       // All high confidence — logged is accurate
       projEl.className = 'projection-display proj-on';
-      projEl.textContent = '✓ Estimates look accurate';
+      projEl.textContent = 'Estimates look accurate';
     } else {
       const sign  = vsGoal > 0 ? 'over' : 'under';
       const absDiff = Math.abs(vsGoal);
       const cls   = vsGoal > goal * 0.1 ? 'proj-exceed' : vsGoal > 0 ? 'proj-over' : 'proj-on';
       projEl.className = `projection-display ${cls}`;
-      projEl.innerHTML = `⚠ Likely actual: ~${projTotal.toLocaleString()} kcal<br><span style="font-weight:400">+${diff} from portion estimates · ${absDiff > 0 ? Math.abs(vsGoal).toLocaleString()+' kcal '+sign+' goal' : 'on target'}</span>`;
+      projEl.innerHTML = `Likely actual: ~${projTotal.toLocaleString()} kcal<br><span style="font-weight:400">+${diff} from portion estimates · ${absDiff > 0 ? Math.abs(vsGoal).toLocaleString()+' kcal '+sign+' goal' : 'on target'}</span>`;
     }
     projEl.classList.remove('hidden');
   } else {
@@ -473,7 +503,7 @@ function renderFoodLog(entries) {
         return `
         <div class="food-entry">
           <div class="food-entry-info">
-            <div class="food-entry-name">${e.fromPhoto ? '📷 ' : ''}${esc(e.name)}</div>
+            <div class="food-entry-name">${e.fromPhoto ? icon('camera', 13) : ''}${esc(e.name)}</div>
             <div class="food-entry-serving">${esc(e.serving)}</div>
             <div class="food-entry-macros">
               <span class="mp">P ${Math.round(e.p)}g</span>
@@ -488,9 +518,9 @@ function renderFoodLog(entries) {
             <div class="food-entry-cal-sub">kcal</div>
           </div>
           <div class="entry-actions">
-            <button class="entry-action-btn" onclick="openEditModal('${e.id}')" title="Edit">✏️</button>
-            <button class="entry-action-btn" onclick="toggleFavourite('${e.id}')" title="${isFav ? 'Remove favourite' : 'Save as favourite'}">${isFav ? '⭐' : '☆'}</button>
-            <button class="entry-action-btn" onclick="deleteEntry('${e.id}')" title="Delete">×</button>
+            <button class="entry-action-btn" onclick="openEditModal('${e.id}')" title="Edit" aria-label="Edit ${esc(e.name)}">${icon('pencil', 16)}</button>
+            <button class="entry-action-btn${isFav ? ' is-fav' : ''}" onclick="toggleFavourite('${e.id}')" title="${isFav ? 'Remove favourite' : 'Save as favourite'}" aria-label="${isFav ? 'Remove favourite' : 'Save as favourite'}" aria-pressed="${isFav}">${icon('star', 16, isFav)}</button>
+            <button class="entry-action-btn" onclick="deleteEntry('${e.id}')" title="Delete" aria-label="Delete ${esc(e.name)}">${icon('x', 16)}</button>
           </div>
         </div>`;
       }).join('')}
@@ -507,15 +537,36 @@ function fileToBase64(file) {
   });
 }
 
+// Long edge 1568px, JPEG q0.82 — ~200–400 KB instead of a 3–12 MB original.
+function downscaleImage(file, maxEdge = 1568) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve({ base64: c.toDataURL('image/jpeg', 0.82).split(',')[1], mediaType: 'image/jpeg' });
+    };
+    img.onerror = e => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
 function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
+let addInFlight = false;
 async function addFood() {
+  if (addInFlight) return;
   const input = document.getElementById('food-input');
   const desc  = input.value.trim();
 
@@ -523,8 +574,8 @@ async function addFood() {
   if (!desc && !pendingPhoto) return;
 
   const apiKey = getApiKey();
-  if (!apiKey) {
-    showAddError('No API key — go to Profile to add one.');
+  if (!apiKey && !arcUser) {
+    showAddError('Sign in to your ARC account or add an API key in Profile.');
     return;
   }
 
@@ -534,6 +585,7 @@ async function addFood() {
   const errEl   = document.getElementById('add-error');
 
   const wasPhoto = !!pendingPhoto;
+  addInFlight = true;
   btn.disabled = true;
   errEl.classList.add('hidden');
 
@@ -541,12 +593,12 @@ async function addFood() {
     let n;
     if (pendingPhoto && desc) {
       // Combined: photo + text context
-      loadTxt.textContent = '📷 Analysing photo + context...';
+      loadTxt.textContent = 'Analysing photo and context…';
       loading.classList.remove('hidden');
       n = await lookupNutritionFromImage(pendingPhoto.base64, pendingPhoto.mediaType, apiKey, desc);
     } else if (pendingPhoto) {
       // Photo only
-      loadTxt.textContent = '📷 Analysing photo...';
+      loadTxt.textContent = 'Analysing photo…';
       loading.classList.remove('hidden');
       n = await lookupNutritionFromImage(pendingPhoto.base64, pendingPhoto.mediaType, apiKey);
     } else {
@@ -555,6 +607,16 @@ async function addFood() {
       loading.classList.remove('hidden');
       n = await lookupNutrition(desc, apiKey);
     }
+
+    // The model's numbers are untrusted: strings concatenate and nulls NaN the totals.
+    const num = v => { const x = Number(v); return Number.isFinite(x) && x >= 0 ? x : NaN; };
+    n.calories = num(n.calories); n.protein_g = num(n.protein_g);
+    n.carbs_g = num(n.carbs_g); n.fat_g = num(n.fat_g);
+    if ([n.calories, n.protein_g, n.carbs_g, n.fat_g].some(Number.isNaN)) {
+      throw new Error('The AI returned incomplete numbers. Try again, or add more detail.');
+    }
+    n.name = String(n.name || desc || 'Meal').slice(0, 120);
+    n.serving = String(n.serving || '').slice(0, 120);
 
     const logs = getLogs();
     const d    = todayStr();
@@ -576,12 +638,13 @@ async function addFood() {
     });
     saveLogs(logs);
     input.value = '';
-    if (wasPhoto) { clearPendingPhoto(); showToast('📷 Photo analysed!'); }
+    if (wasPhoto) { clearPendingPhoto(); showToast('Photo logged'); }
     updateTodayView();
   } catch (err) {
     errEl.textContent = `Error: ${err.message}`;
     errEl.classList.remove('hidden');
   } finally {
+    addInFlight = false;
     btn.disabled = false;
     loading.classList.add('hidden');
   }
@@ -598,6 +661,7 @@ function deleteEntry(id) {
   const d    = todayStr();
   if (logs[d]) {
     logs[d] = logs[d].filter(e => e.id !== id);
+    tombstone(d, id);   // so a synced copy on another device/ARC can't resurrect it
     saveLogs(logs);
     updateTodayView();
   }
@@ -647,7 +711,8 @@ function saveEdit() {
     cal, p, c, f,
     gi,
     gl:   computeGL(gi, c),
-    conf: null // manually edited — no confidence score
+    conf: null, // manually edited — no confidence score
+    upd:  Date.now()   // newest edit wins in the ARC sync merge
   };
   saveLogs(logs);
   closeEditModal();
@@ -669,7 +734,7 @@ function toggleFavourite(entryId) {
     showToast('Removed from favourites');
   } else {
     favs.push({ favId: entry.id, name: entry.name, serving: entry.serving, cal: entry.cal, p: entry.p, c: entry.c, f: entry.f, gi: entry.gi || 0, gl: entryGL(entry) });
-    showToast('⭐ Saved to favourites!');
+    showToast('Saved to quick add');
   }
   saveFavs(favs);
   updateTodayView();
@@ -706,11 +771,11 @@ function renderFavourites() {
   section.classList.remove('hidden');
 
   chips.innerHTML = favs.map((f, i) => `
-    <div class="fav-chip" onclick="quickAddFavourite(${JSON.stringify(f).replace(/"/g,'&quot;')})">
+    <button type="button" class="fav-chip" data-fav-idx="${i}">
       <div class="fav-chip-name">${esc(f.name)}</div>
       <div class="fav-chip-cal">${Math.round(f.cal)} kcal</div>
       <div class="fav-chip-macros">P${Math.round(f.p)} C${Math.round(f.c)} F${Math.round(f.f)}</div>
-    </div>
+    </button>
   `).join('');
 }
 
@@ -718,8 +783,9 @@ function renderFavourites() {
 function last14() {
   return Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
+    d.setHours(12, 0, 0, 0);
     d.setDate(d.getDate() - (13 - i));
-    return d.toISOString().slice(0, 10);
+    return ymdLocal(d);
   });
 }
 function last7() { return last14().slice(7); }
@@ -728,9 +794,10 @@ function calcStreak() {
   const logs = getLogs();
   let streak = 0;
   const d = new Date();
+  d.setHours(12, 0, 0, 0);
   if (!(logs[todayStr()] || []).length) d.setDate(d.getDate() - 1);
   while (true) {
-    const k = d.toISOString().slice(0, 10);
+    const k = ymdLocal(d);
     if (!(logs[k] || []).length) break;
     streak++;
     d.setDate(d.getDate() - 1);
@@ -778,14 +845,14 @@ function renderCalChart(logs, profile) {
       datasets: [
         {
           data,
-          backgroundColor: data.map(v => v === 0 ? '#334155' : v > goal * 1.05 ? '#f87171' : '#4ade80'),
+          backgroundColor: data.map(v => v === 0 ? '#262a2f' : v > goal * 1.05 ? '#d88685' : '#d6b48e'),
           borderRadius: 4,
           order: 2
         },
         {
           type: 'line',
           data: new Array(14).fill(goal),
-          borderColor: '#22c55e',
+          borderColor: '#979ca4',
           borderWidth: 1.5,
           borderDash: [4, 4],
           pointRadius: 0,
@@ -798,8 +865,8 @@ function renderCalChart(logs, profile) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.raw} kcal` } } },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-        y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' } }
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' } }
       }
     }
   });
@@ -824,7 +891,7 @@ function renderMacroChart(logs) {
       labels: ['Protein', 'Carbs', 'Fat'],
       datasets: [{
         data: [+(p/n).toFixed(1), +(c/n).toFixed(1), +(f/n).toFixed(1)],
-        backgroundColor: ['#60a5fa', '#fbbf24', '#fb923c'],
+        backgroundColor: ['#9fb8cc', '#cfc07e', '#d49ab8'],
         borderWidth: 0
       }]
     },
@@ -832,7 +899,7 @@ function renderMacroChart(logs) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'right', labels: { font: { size: 11 }, padding: 10, color: '#94a3b8' } },
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 10, color: '#979ca4' } },
         tooltip: { callbacks: { label: c => `${c.label}: ${c.raw}g avg` } }
       }
     }
@@ -854,8 +921,8 @@ function renderWeightChartIn(canvasId, chartKey) {
       }),
       datasets: [{
         data: weights.map(w => w.kg),
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34,197,94,0.08)',
+        borderColor: '#d6b48e',
+        backgroundColor: 'rgba(214,180,142,0.08)',
         borderWidth: 2,
         pointRadius: 3,
         fill: true,
@@ -867,8 +934,8 @@ function renderWeightChartIn(canvasId, chartKey) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#94a3b8' } },
-        y: { grid: { color: '#1e293b' }, ticks: { font: { size: 9 }, color: '#94a3b8' } }
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, color: '#979ca4' } },
+        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { font: { size: 9 }, color: '#979ca4' } }
       }
     }
   });
@@ -895,7 +962,7 @@ function logWeight() {
   const weights = getWeights();
   const d = todayStr();
   const i = weights.findIndex(w => w.date === d);
-  if (i >= 0) weights[i].kg = kg; else weights.push({ date: d, kg });
+  if (i >= 0) { weights[i].kg = kg; weights[i].upd = Date.now(); } else weights.push({ date: d, kg, upd: Date.now() });
   weights.sort((a, b) => a.date.localeCompare(b.date));
   saveWeights(weights);
 
@@ -1007,7 +1074,8 @@ function handleSetup() {
 
   const fail = msg => { errEl.textContent = msg; errEl.classList.remove('hidden'); };
 
-  if (!apiKey.startsWith('sk-'))       return fail('Enter a valid Anthropic API key (starts with sk-)');
+  if (!arcUser && !apiKey.startsWith('sk-')) return fail('Sign in to your ARC account above, or enter an Anthropic API key (starts with sk-)');
+  if (apiKey && !apiKey.startsWith('sk-'))    return fail('That API key doesn’t look right (it starts with sk-)');
   if (!name)                           return fail('Please enter your name');
   if (!age || age < 10 || age > 120)   return fail('Enter a valid age');
   if (!height || height < 100 || height > 260) return fail('Enter a valid height in cm');
@@ -1020,7 +1088,7 @@ function handleSetup() {
       return fail('Enter a valid calorie goal (500–10000)');
   }
 
-  saveApiKey(apiKey);
+  if (apiKey) saveApiKey(apiKey);
   saveProfile({ name, age, sex, height, weight, activity, goalType: setupGoalType, customGoal });
 
   const weights = getWeights();
@@ -1057,6 +1125,11 @@ function initEvents() {
     btn.addEventListener('click', () => navigate(btn.dataset.view)));
 
   document.getElementById('add-btn').addEventListener('click', addFood);
+  document.getElementById('fav-chips').addEventListener('click', e => {
+    const chip = e.target.closest('[data-fav-idx]');
+    const fav = chip && getFavs()[+chip.dataset.favIdx];
+    if (fav) quickAddFavourite(fav);
+  });
   document.getElementById('food-input').addEventListener('keypress', e => {
     if (e.key === 'Enter') addFood();
   });
@@ -1065,8 +1138,9 @@ function initEvents() {
   document.getElementById('camera-input').addEventListener('change', async e => {
     const file = e.target.files[0];
     if (!file) return;
-    const base64    = await fileToBase64(file);
-    const mediaType = file.type || 'image/jpeg';
+    let base64, mediaType;
+    try { ({ base64, mediaType } = await downscaleImage(file)); }
+    catch { base64 = await fileToBase64(file); mediaType = file.type || 'image/jpeg'; }
     pendingPhoto = { base64, mediaType };
 
     // Show preview
@@ -1137,11 +1211,23 @@ function initEvents() {
   document.getElementById('gist-connect-btn').addEventListener('click', async () => {
     const token = document.getElementById('p-gist-token').value.trim();
     if (!token) { setSyncStatus('Enter a token first'); return; }
+    if (token !== getGistToken()) localStorage.removeItem('cai_gist_id');
     setGistToken(token);
     setSyncStatus('Connecting…');
     try {
+      // A backup may already exist (reinstall / new device). Pushing now would
+      // replace that history with this device's data, so restore first.
+      const existing = await cloudPull().catch(() => null);
+      if (existing && existing.lastModified > (getMeta().lastModified || 0)) {
+        applyBackupPayload(existing);
+        updateTodayView(); renderProfileView();
+        setSyncStatus(`Restored cloud backup from ${new Date(existing.lastModified).toLocaleString('en-GB')}`);
+        showToast('Restored from cloud');
+        document.getElementById('gist-disconnect-btn').classList.remove('hidden');
+        return;
+      }
       await cloudPush();
-      showToast('☁️ Backed up!');
+      showToast('Backed up to cloud');
       document.getElementById('gist-disconnect-btn').classList.remove('hidden');
       document.getElementById('gist-connect-btn').textContent = 'Back Up Now';
     } catch (e) {
@@ -1159,7 +1245,7 @@ function initEvents() {
       const cloud = await cloudPull();
       if (!cloud) { setSyncStatus('No backup found for this token'); return; }
       applyBackupPayload(cloud);
-      showToast('☁️ Restored!');
+      showToast('Restored from cloud');
       renderProfileView();
       updateTodayView();
       setSyncStatus(`Restored: ${new Date(cloud.lastModified).toLocaleString('en-GB')}`);
@@ -1197,7 +1283,7 @@ function initEvents() {
       status.textContent = 'Restored! Loading…';
       launchApp();
       updateTodayView();
-      showToast('☁️ Welcome back!');
+      showToast('Restored from cloud');
     } catch (e) {
       status.textContent = `Failed: ${e.message}`;
     }
@@ -1216,16 +1302,27 @@ function initEvents() {
   });
 
   document.getElementById('clear-btn').addEventListener('click', () => {
-    if (confirm('Delete all data? This cannot be undone.')) {
-      localStorage.clear();
+    if (confirm(arcUser ? 'Delete all data on this device? Your ARC cloud copy is kept and will restore on next sync — sign out first to keep this device empty.' : 'Delete all data? This cannot be undone.')) {
+      // Same origin as ARC (joejohnston72-dev.github.io) — never localStorage.clear().
+      Object.keys(localStorage).filter(k => k.startsWith('cai_')).forEach(k => localStorage.removeItem(k));
       location.reload();
     }
   });
 }
 
+var lastShownDay = null;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || !getProfile()) return;
+  if (lastShownDay !== todayStr()) updateTodayView();
+  if (cloudEnabled()) syncOnLaunch().then(changed => { if (changed) { updateTodayView(); renderProfileView(); } });
+  arcSync().then(changed => { if (changed) refreshAfterArcSync(); });
+});
+
 function init() {
   initSetup();
   initEvents();
+  initArcSync();
+  lastShownDay = todayStr();
   if (getProfile()) {
     launchApp();
     // Background sync: pull newer data from other devices, then refresh

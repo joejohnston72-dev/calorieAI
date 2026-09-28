@@ -1,13 +1,19 @@
-const CACHE = 'calorieai-v10';
+const CACHE = 'calorieai-v13';
 // Relative paths so the app works whether it's served from the domain root
-// or from a project subpath (e.g. GitHub Pages at /calorieai/).
+// or from a project subpath (e.g. GitHub Pages at /calorieAI/).
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './metabolic.js',
+  './arcsync.js',
+  './cloud.js',
   './manifest.json',
+  './icon.svg',
+  './icon-180.png',
+  './icon-192.png',
+  './icon-512.png',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
 ];
 
@@ -17,9 +23,11 @@ self.addEventListener('install', e => {
 });
 
 self.addEventListener('activate', e => {
+  // Only prune our own caches: the github.io origin is shared with ARC,
+  // whose caches must survive a CalorieAI update.
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k.startsWith('calorieai-') && k !== CACHE).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
@@ -27,9 +35,16 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const req = e.request;
+  const url = new URL(req.url);
 
-  // Never touch the Anthropic API
-  if (req.url.includes('anthropic.com')) return;
+  // Only GETs for our own files (+ the pinned Chart.js). API calls to Anthropic
+  // and GitHub pass straight through: they must fail honestly when offline and
+  // their (private, token-authenticated) responses must never be cached.
+  if (req.method !== 'GET') return;
+  // supabase-js is cached so the ARC session still loads on an offline launch.
+  const ours = url.origin === location.origin || url.href.startsWith('https://cdn.jsdelivr.net/npm/chart.js@')
+    || url.href.startsWith('https://cdn.jsdelivr.net/npm/@supabase/');
+  if (!ours) return;
 
   // NETWORK-FIRST: always try to get the freshest version.
   // Fall back to cache only when offline. This guarantees code
@@ -38,11 +53,13 @@ self.addEventListener('fetch', e => {
   e.respondWith(
     fetch(req)
       .then(res => {
-        // Update the cache with the fresh copy for offline use
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        }
         return res;
       })
-      .catch(() => caches.match(req).then(cached => cached || caches.match('./index.html')))
+      .catch(() => caches.match(req, { ignoreSearch: true }).then(cached =>
+        cached || (req.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
   );
 });
